@@ -37,7 +37,7 @@ export class ApiError extends Error {
 const configuredBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
 const localApiBase = ['127.0.0.1', 'localhost'].includes(window.location.hostname)
   ? 'http://127.0.0.1:8787'
-  : '';
+  : 'https://sorry-letter-api.aldoramadhan16.workers.dev';
 export const API_BASE_URL = (configuredBase || localApiBase).replace(/\/$/, '');
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
