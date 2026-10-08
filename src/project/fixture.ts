@@ -25,13 +25,13 @@ export const demoProject: SorryGiftProjectV1 = {
   },
   music: {
     audioUrl: 'https://cdn.for-you-always.my.id/1791465566473-v1ppg.mp3',
-    coverUrl: 'https://cdn.for-you-always.my.id/1791465621753-onizf2.jpg',
+    coverUrl: 'https://cdn.for-you-always.my.id/1791466716102-9gvgds.jpg',
     title: 'White Ferrari',
     artist: 'Frank Ocean',
     tracks: [
       {
         audioUrl: 'https://cdn.for-you-always.my.id/1791465566473-v1ppg.mp3',
-        coverUrl: 'https://cdn.for-you-always.my.id/1791465621753-onizf2.jpg',
+        coverUrl: 'https://cdn.for-you-always.my.id/1791466716102-9gvgds.jpg',
         title: 'White Ferrari',
         artist: 'Frank Ocean',
       },
