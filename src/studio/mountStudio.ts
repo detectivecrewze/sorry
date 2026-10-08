@@ -134,6 +134,156 @@ const REMOVE_ICON_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="n
 const DOWNLOAD_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px; margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 const COPY_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -1px; margin-right: 4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const EXTERNAL_LINK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -1px; margin-right: 4px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+const TRASH_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -1px; margin-right: 4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+const CHECK_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -1px; margin-right: 3px;"><polyline points="20 6 9 17 4 12"/></svg>';
+const CLOSE_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+const INFO_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+const ALERT_TRIANGLE_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+interface TwoStepDeleteConfig {
+  category: string;
+  title: string;
+  subtitle?: string;
+  previewUrl?: string;
+  previewKind?: 'image' | 'audio';
+  onConfirm: () => void;
+}
+
+function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
+  const backdrop = el('div', 'two-step-modal__backdrop');
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-label', `Konfirmasi Hapus ${config.category}`);
+
+  const card = el('div', 'two-step-modal__card');
+  let currentStep: 1 | 2 = 1;
+
+  const close = (): void => {
+    window.removeEventListener('keydown', onKeyDown);
+    backdrop.remove();
+    document.body.classList.remove('has-modal');
+  };
+
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close();
+  };
+  window.addEventListener('keydown', onKeyDown);
+
+  backdrop.addEventListener('mousedown', (e) => {
+    if (e.target === backdrop) close();
+  });
+
+  const renderModalStep = (): void => {
+    card.replaceChildren();
+
+    const head = el('header', 'two-step-modal__header');
+    const stepper = el('div', 'two-step-stepper');
+    const badge = el(
+      'span',
+      `two-step-stepper__badge${currentStep === 2 ? ' is-danger' : ''}`,
+      currentStep === 1 ? 'Langkah 1 dari 2 — Konfirmasi Awal' : 'Langkah 2 dari 2 — Verifikasi Akhir',
+    );
+    const dots = el('div', 'two-step-stepper__dots');
+    const dot1 = el('span', `two-step-dot${currentStep >= 1 ? ' is-active' : ''}${currentStep === 2 ? ' is-done' : ''}`);
+    if (currentStep === 2) {
+      dot1.innerHTML = CHECK_ICON_SVG;
+    } else {
+      dot1.textContent = '1';
+    }
+    const dot2 = el('span', `two-step-dot${currentStep === 2 ? ' is-active is-danger' : ''}`, '2');
+    dots.append(dot1, dot2);
+    stepper.append(badge, dots);
+
+    const closeBtn = button('', 'two-step-modal__close-btn');
+    closeBtn.innerHTML = CLOSE_ICON_SVG;
+    closeBtn.setAttribute('aria-label', 'Tutup dialog konfirmasi');
+    closeBtn.addEventListener('click', close);
+    head.append(stepper, closeBtn);
+
+    const content = el('div', 'two-step-modal__content');
+
+    if (currentStep === 1) {
+      const h3 = el('h3', 'two-step-modal__title', `Hapus ${config.category}?`);
+
+      const itemCard = el('div', 'two-step-item-card');
+      if (config.previewKind === 'image' && config.previewUrl) {
+        const thumb = el('div', 'two-step-item-card__thumb');
+        const img = el('img') as HTMLImageElement;
+        img.src = config.previewUrl;
+        img.alt = '';
+        thumb.append(img);
+        itemCard.append(thumb);
+      } else {
+        const iconWrap = el('div', 'two-step-item-card__icon');
+        iconWrap.innerHTML = MUSIC_NOTE_SVG;
+        itemCard.append(iconWrap);
+      }
+      const itemInfo = el('div', 'two-step-item-card__info');
+      itemInfo.append(
+        el('strong', '', config.title || config.category),
+        el('span', '', config.subtitle || 'Terpasang di kado'),
+      );
+      itemCard.append(itemInfo);
+
+      const msg = el(
+        'p',
+        'two-step-modal__desc',
+        `Apakah kamu yakin ingin melepas ${config.category.toLowerCase()} ini dari surat? File ini tidak akan dimainkan atau ditampilkan lagi di kado pasanganmu.`,
+      );
+
+      const actions = el('div', 'two-step-modal__actions');
+      const cancelBtn = button('Batal', 'ui-button ui-button--secondary');
+      cancelBtn.addEventListener('click', close);
+
+      const nextBtn = button('Lanjut Hapus →', 'ui-button ui-button--danger');
+      nextBtn.addEventListener('click', () => {
+        currentStep = 2;
+        renderModalStep();
+      });
+
+      actions.append(cancelBtn, nextBtn);
+      content.append(h3, itemCard, msg, actions);
+    } else {
+      const h3 = el('h3', 'two-step-modal__title two-step-modal__title--danger', 'Konfirmasi Terakhir: Hapus Permanen?');
+
+      const warningCallout = el('div', 'two-step-warning-callout');
+      const warnIcon = el('span', 'two-step-warning-icon');
+      warnIcon.innerHTML = ALERT_TRIANGLE_SVG;
+      const warnText = el('div', 'two-step-warning-text');
+      warnText.append(
+        el('strong', '', 'Peringatan: Tindakan ini permanen!'),
+        el('p', '', `File "${config.title || config.category}" akan langsung dilepas dari surat kado. Kamu harus mengunggah atau memilih lagu ulang jika berubah pikiran.`),
+      );
+      warningCallout.append(warnIcon, warnText);
+
+      const finalPrompt = el('p', 'two-step-modal__desc', 'Klik tombol di bawah jika kamu sudah benar-benar yakin untuk menghapusnya.');
+
+      const actions = el('div', 'two-step-modal__actions');
+      const backBtn = button('← Kembali', 'ui-button ui-button--secondary');
+      backBtn.addEventListener('click', () => {
+        currentStep = 1;
+        renderModalStep();
+      });
+
+      const confirmBtn = button('', 'ui-button ui-button--danger');
+      confirmBtn.innerHTML = `${TRASH_ICON_SVG}<span>Ya, Hapus Sekarang</span>`;
+      confirmBtn.addEventListener('click', () => {
+        close();
+        config.onConfirm();
+      });
+
+      actions.append(backBtn, confirmBtn);
+      content.append(h3, warningCallout, finalPrompt, actions);
+    }
+
+    card.append(head, content);
+  };
+
+  renderModalStep();
+  backdrop.append(card);
+  document.body.append(backdrop);
+  document.body.classList.add('has-modal');
+}
 
 function renderScannableLoveBarcode(
   canvas: HTMLCanvasElement,
@@ -809,12 +959,21 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
         removeBtn.innerHTML = `${REMOVE_ICON_SVG}<span>Hapus</span>`;
         removeBtn.setAttribute('aria-label', `Hapus ${track.title} dari playlist`);
         removeBtn.addEventListener('click', () => {
-          stopStudioAudio();
-          tracks.splice(index, 1);
-          syncPrimaryTrack();
-          if (previewTrackIndex >= tracks.length) previewTrackIndex = Math.max(0, tracks.length - 1);
-          changed();
-          render();
+          openTwoStepDeleteModal({
+            category: 'Lagu Playlist',
+            title: track.title || 'Lagu Terpilih',
+            subtitle: track.artist || 'Daftar putar kado',
+            previewUrl: track.coverUrl,
+            previewKind: track.coverUrl ? 'image' : 'audio',
+            onConfirm: () => {
+              stopStudioAudio();
+              tracks.splice(index, 1);
+              syncPrimaryTrack();
+              if (previewTrackIndex >= tracks.length) previewTrackIndex = Math.max(0, tracks.length - 1);
+              changed();
+              render();
+            },
+          });
         });
 
         actions.append(playBtn, removeBtn);
@@ -982,44 +1141,247 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     });
 
     function uploadField(kind: 'audio' | 'cover', label: string, accept: string, currentUrl: string): HTMLElement {
-      const root = el('div', 'upload-field');
+      const root = el('div', `upload-field${currentUrl ? ' is-uploaded' : ''}`);
+
       const top = el('div', 'upload-field__top');
-      top.append(el('strong', '', label), el('span', currentUrl ? 'upload-state is-ready' : 'upload-state', currentUrl ? 'Sudah diunggah' : 'Belum ada file'));
-      const input = el('input');
+      const topBadge = el(
+        'span',
+        `upload-badge${currentUrl ? ' upload-badge--success' : ' upload-badge--empty'}`,
+      );
+      topBadge.innerHTML = currentUrl
+        ? `${CHECK_ICON_SVG}<span>${kind === 'audio' ? 'Lagu Terpasang & Siap' : 'Foto Cover Terpasang'}</span>`
+        : '<span>Belum Ada File</span>';
+      top.append(el('strong', '', label), topBadge);
+
+      const input = el('input') as HTMLInputElement;
       input.type = 'file';
       input.accept = accept;
       input.hidden = true;
-      const trigger = button(currentUrl ? 'Ganti file' : 'Pilih file', 'ui-button ui-button--secondary');
+
+      const progressWrap = el('div', 'upload-progress-wrap');
+      progressWrap.hidden = true;
+      const progressLabel = el('span', 'upload-progress-label', 'Mengunggah 0%...');
       const progress = el('div', 'upload-progress');
-      progress.append(el('i'));
+      const progressBar = el('i');
+      progress.append(progressBar);
+      progressWrap.append(progressLabel, progress);
+
       const retry = button('Coba lagi', 'text-button');
       retry.hidden = true;
+
       let localPreviewUrl = '';
-      const preview = kind === 'cover' ? el('div', 'upload-cover-preview') : null;
-      const previewImage = kind === 'cover' ? el('img') as HTMLImageElement : null;
-      if (preview && previewImage) {
-        previewImage.alt = 'Preview thumbnail lagu';
-        previewImage.decoding = 'async';
-        previewImage.addEventListener('load', () => {
-          if (localPreviewUrl && previewImage.src === localPreviewUrl) {
-            URL.revokeObjectURL(localPreviewUrl);
-            localPreviewUrl = '';
-          }
-        });
-        if (currentUrl) previewImage.src = currentUrl;
-        preview.hidden = !currentUrl;
-        preview.append(previewImage);
+
+      if (currentUrl) {
+        const showcase = el('div', 'upload-showcase');
+
+        if (kind === 'audio') {
+          // Audio Track Overview Strip
+          const trackStrip = el('div', 'upload-track-strip');
+          const vinyl = el('div', 'upload-track-vinyl');
+          vinyl.innerHTML = MUSIC_NOTE_SVG;
+          const meta = el('div', 'upload-track-meta');
+          const trackTag = el('span', 'upload-state-tag');
+          trackTag.innerHTML = `${CHECK_ICON_SVG}<span>Musik Latar Aktif di Surat</span>`;
+          meta.append(
+            el('strong', '', project.music.title || 'Lagu Pengiring Surat'),
+            el('span', '', project.music.artist || 'Artis Musik'),
+            trackTag,
+          );
+          trackStrip.append(vinyl, meta);
+
+          // Mini Preview Player
+          const miniPlayer = el('div', 'upload-mini-player');
+          const miniPlay = button('', 'upload-mini-player__play-btn');
+          const isCurrentlyPlaying = audio.src === currentUrl && !audio.paused;
+          miniPlay.innerHTML = isCurrentlyPlaying ? PAUSE_ICON_SVG : PLAY_ICON_SVG;
+          if (isCurrentlyPlaying) miniPlay.classList.add('is-playing');
+          miniPlay.setAttribute('aria-label', isCurrentlyPlaying ? 'Jeda preview lagu' : 'Dengarkan preview lagu');
+          miniPlay.addEventListener('click', async () => {
+            musicCatalog?.stop();
+            if (audio.src === currentUrl && !audio.paused) {
+              audio.pause();
+            } else {
+              if (audio.src !== currentUrl) {
+                audio.src = currentUrl;
+                audio.load();
+              }
+              try {
+                await audio.play();
+              } catch {
+                // ignore
+              }
+            }
+            syncSelectedAudioButton();
+            syncMiniPlayerButton();
+          });
+
+          const miniCurrent = el(
+            'span',
+            'upload-mini-player__time upload-mini-player__current',
+            audio.src === currentUrl ? formatTime(audio.currentTime) : '0:00',
+          );
+          const miniSeek = el('input', 'upload-mini-player__seek') as HTMLInputElement;
+          miniSeek.type = 'range';
+          miniSeek.min = '0';
+          miniSeek.max = '100';
+          miniSeek.value = audio.src === currentUrl && audio.duration ? String((audio.currentTime / audio.duration) * 100) : '0';
+          miniSeek.setAttribute('aria-label', 'Posisi putar preview lagu');
+          miniSeek.addEventListener('input', () => {
+            if (audio.src === currentUrl && audio.duration) {
+              audio.currentTime = (Number(miniSeek.value) / 100) * audio.duration;
+            }
+          });
+          const miniDuration = el(
+            'span',
+            'upload-mini-player__time upload-mini-player__duration',
+            audio.src === currentUrl ? formatTime(audio.duration) : '0:00',
+          );
+
+          miniPlayer.append(miniPlay, miniCurrent, miniSeek, miniDuration);
+
+          // Reassuring Guidance Box
+          const guide = el('div', 'upload-guide-callout');
+          const guideIcon = el('span', 'upload-guide-callout__icon');
+          guideIcon.innerHTML = INFO_ICON_SVG;
+          const guideText = el('div', 'upload-guide-callout__text');
+          guideText.append(
+            el('strong', '', 'Otomatis Terpasang & Siap Diputar'),
+            el('p', '', 'Lagu ini otomatis aktif sebagai musik latar kado. Saat pasanganmu membuka amplop surat, lagu ini akan langsung diputar mengiringi setiap kata maafmu.'),
+          );
+          guide.append(guideIcon, guideText);
+
+          // Action Toolbar
+          const actions = el('div', 'upload-action-bar');
+          const changeBtn = button('Ganti File Lagu', 'ui-button ui-button--secondary');
+          changeBtn.addEventListener('click', () => input.click());
+
+          const deleteBtn = button('', 'ui-button--danger-outline');
+          deleteBtn.innerHTML = `${TRASH_ICON_SVG}<span>Hapus Lagu</span>`;
+          deleteBtn.setAttribute('aria-label', 'Hapus lagu yang sudah diunggah');
+          deleteBtn.addEventListener('click', () => {
+            openTwoStepDeleteModal({
+              category: 'Lagu MP3',
+              title: project.music.title || 'Lagu MP3',
+              subtitle: project.music.artist || 'Musik latar kado',
+              previewKind: 'audio',
+              onConfirm: () => {
+                stopStudioAudio();
+                project.music.audioUrl = '';
+                audio.removeAttribute('src');
+                if (project.music.tracks && project.music.tracks.length > 0) {
+                  project.music.tracks[0].audioUrl = '';
+                }
+                syncPrimaryTrack();
+                changed();
+                render();
+              },
+            });
+          });
+
+          actions.append(changeBtn, deleteBtn);
+          showcase.append(trackStrip, miniPlayer, guide, actions);
+        } else {
+          // Cover Showcase
+          const coverShowcase = el('div', 'upload-cover-showcase');
+          const coverFrame = el('div', 'upload-cover-preview');
+          const previewImage = el('img') as HTMLImageElement;
+          previewImage.src = currentUrl;
+          previewImage.alt = 'Preview cover album lagu';
+          previewImage.decoding = 'async';
+          coverFrame.append(previewImage);
+
+          const coverMeta = el('div', 'upload-cover-meta');
+          const visualTag = el('span', 'upload-state-tag');
+          visualTag.innerHTML = `${CHECK_ICON_SVG}<span>Visual Kado Aktif</span>`;
+          coverMeta.append(
+            el('strong', '', 'Foto Piringan Hitam Terpasang'),
+            el('span', '', 'Foto ini aktif sebagai cover album pada piringan hitam amplop & player surat.'),
+            visualTag,
+          );
+          coverShowcase.append(coverFrame, coverMeta);
+
+          // Reassuring Guidance Box
+          const guide = el('div', 'upload-guide-callout');
+          const guideIcon = el('span', 'upload-guide-callout__icon');
+          guideIcon.innerHTML = INFO_ICON_SVG;
+          const guideText = el('div', 'upload-guide-callout__text');
+          guideText.append(
+            el('strong', '', 'Cover Album Kado Terpasang'),
+            el('p', '', 'Foto ini akan tampil di piringan hitam saat amplop dibuka dan pada player musik kado agar surat terasa personal dan penuh kenangan.'),
+          );
+          guide.append(guideIcon, guideText);
+
+          // Action Toolbar
+          const actions = el('div', 'upload-action-bar');
+          const changeBtn = button('Ganti Foto Cover', 'ui-button ui-button--secondary');
+          changeBtn.addEventListener('click', () => input.click());
+
+          const deleteBtn = button('', 'ui-button--danger-outline');
+          deleteBtn.innerHTML = `${TRASH_ICON_SVG}<span>Hapus Cover</span>`;
+          deleteBtn.setAttribute('aria-label', 'Hapus cover foto yang sudah diunggah');
+          deleteBtn.addEventListener('click', () => {
+            openTwoStepDeleteModal({
+              category: 'Foto Cover',
+              title: 'Foto Thumbnail Lagu',
+              subtitle: 'Cover piringan hitam surat',
+              previewUrl: currentUrl,
+              previewKind: 'image',
+              onConfirm: () => {
+                project.music.coverUrl = '';
+                if (project.music.tracks && project.music.tracks.length > 0) {
+                  project.music.tracks[0].coverUrl = '';
+                }
+                syncPrimaryTrack();
+                changed();
+                render();
+              },
+            });
+          });
+
+          actions.append(changeBtn, deleteBtn);
+          showcase.append(coverShowcase, guide, actions);
+        }
+
+        root.append(top, showcase, progressWrap, retry, input);
+      } else {
+        // Empty Dropzone
+        const dropzone = el('div', 'upload-dropzone');
+        const iconWrap = el('div', 'upload-dropzone__icon');
+        iconWrap.innerHTML = kind === 'audio'
+          ? MUSIC_NOTE_SVG
+          : '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+
+        const emptyTitle = el(
+          'strong',
+          'upload-dropzone__title',
+          kind === 'audio' ? 'Belum Ada Lagu yang Diunggah' : 'Belum Ada Foto Cover',
+        );
+        const emptyHint = el(
+          'p',
+          'upload-dropzone__hint',
+          kind === 'audio'
+            ? 'Unggah lagu MP3 spesial kalian berdua (maks. 25 MB) untuk mengiringi surat.'
+            : 'Unggah foto cover album (JPG, PNG, atau WebP) untuk piringan hitam kado.',
+        );
+        const selectBtn = button(
+          kind === 'audio' ? 'Pilih File MP3' : 'Pilih Foto Cover',
+          'ui-button ui-button--secondary upload-dropzone__btn',
+        );
+        selectBtn.addEventListener('click', () => input.click());
+
+        dropzone.append(iconWrap, emptyTitle, emptyHint, selectBtn);
+        root.append(top, dropzone, progressWrap, retry, input);
       }
-      trigger.addEventListener('click', () => input.click());
 
       const perform = async (file: File): Promise<void> => {
-        trigger.disabled = true;
         retry.hidden = true;
-        top.lastElementChild!.textContent = 'Mengunggah 0%';
+        progressWrap.hidden = false;
+        progressLabel.textContent = 'Mengunggah 0%...';
+        progressBar.style.width = '0%';
         try {
           const result = await uploadMedia(projectId, token, kind, file, (percent) => {
-            top.lastElementChild!.textContent = `Mengunggah ${percent}%`;
-            (progress.firstElementChild as HTMLElement).style.width = `${percent}%`;
+            progressLabel.textContent = `Mengunggah ${percent}%...`;
+            progressBar.style.width = `${percent}%`;
           });
           if (kind === 'audio') {
             project.music.audioUrl = result.url;
@@ -1036,46 +1398,39 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
             }
           } else {
             project.music.coverUrl = result.url;
-            if (preview && previewImage) {
-              previewImage.src = result.url;
-              preview.hidden = false;
-            }
             if (project.music.tracks && project.music.tracks.length > 0) {
               project.music.tracks[0].coverUrl = result.url;
             }
           }
-          top.lastElementChild!.textContent = 'Upload selesai';
+          progressLabel.textContent = 'Upload selesai! Memasang file...';
           changed();
           window.setTimeout(render, 350);
         } catch (error) {
-          top.lastElementChild!.textContent = errorMessage(error);
+          progressLabel.textContent = errorMessage(error);
           retry.hidden = false;
           uploadRetry = () => void perform(file);
-        } finally {
-          trigger.disabled = false;
         }
       };
+
       input.addEventListener('change', () => {
         const file = input.files?.[0];
         if (!file) return;
-        if (kind === 'cover' && preview && previewImage) {
-          if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
-          localPreviewUrl = URL.createObjectURL(file);
-          previewImage.src = localPreviewUrl;
-          preview.hidden = false;
+        if (localPreviewUrl) {
+          URL.revokeObjectURL(localPreviewUrl);
+          localPreviewUrl = '';
         }
         void perform(file);
       });
+
       retry.addEventListener('click', () => uploadRetry?.());
-      root.append(top, trigger, input, ...(preview ? [preview] : []), progress, retry);
       return root;
     }
 
     form.append(
       field('Judul lagu', title, 'Nama lagu yang tampil pada player di dalam surat.'),
       field('Artis', artist, 'Nama penyanyi atau artis yang tampil di bawah judul.'),
-      uploadField('audio', 'Lagu MP3', 'audio/mpeg,.mp3', project.music.audioUrl),
-      uploadField('cover', 'Thumbnail lagu', 'image/jpeg,image/png,image/webp', project.music.coverUrl),
+      uploadField('audio', 'Lagu MP3 Utama', 'audio/mpeg,.mp3', project.music.audioUrl),
+      uploadField('cover', 'Thumbnail / Cover Piringan Hitam', 'image/jpeg,image/png,image/webp', project.music.coverUrl),
     );
     uploadPanel.append(el('p', 'music-source-help', 'Upload satu MP3 maksimal 25 MB dan satu thumbnail JPG, PNG, atau WebP.'), form);
 
@@ -1202,7 +1557,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       copyBtn.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(url);
-          copyBtn.innerHTML = '<span>Tersalin! ✓</span>';
+          copyBtn.innerHTML = `${CHECK_ICON_SVG}<span>Tersalin!</span>`;
           copyBtn.classList.add('is-copied');
           setTimeout(() => {
             copyBtn.innerHTML = `${COPY_ICON_SVG}<span>Salin Link</span>`;
@@ -1248,10 +1603,24 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     if (seek && audio.duration) seek.value = String((audio.currentTime / audio.duration) * 100);
     const current = panel.querySelector<HTMLElement>('.studio-player__current');
     if (current) current.textContent = formatTime(audio.currentTime);
+
+    const miniSeek = panel.querySelector<HTMLInputElement>('.upload-mini-player__seek');
+    if (miniSeek && audio.duration && audio.src === project.music.audioUrl) {
+      miniSeek.value = String((audio.currentTime / audio.duration) * 100);
+    }
+    const miniCurrent = panel.querySelector<HTMLElement>('.upload-mini-player__current');
+    if (miniCurrent && audio.src === project.music.audioUrl) {
+      miniCurrent.textContent = formatTime(audio.currentTime);
+    }
   });
   audio.addEventListener('loadedmetadata', () => {
     const duration = panel.querySelector<HTMLElement>('.studio-player__duration');
     if (duration) duration.textContent = formatTime(audio.duration);
+
+    const miniDuration = panel.querySelector<HTMLElement>('.upload-mini-player__duration');
+    if (miniDuration && audio.src === project.music.audioUrl) {
+      miniDuration.textContent = formatTime(audio.duration);
+    }
   });
   const syncSelectedAudioButton = (): void => {
     const play = panel.querySelector<HTMLButtonElement>('.player-button');
@@ -1260,13 +1629,31 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     play.innerHTML = isPaused ? PLAY_ICON_SVG : PAUSE_ICON_SVG;
     play.setAttribute('aria-label', isPaused ? 'Putar lagu terpilih' : 'Jeda lagu terpilih');
   };
-  audio.addEventListener('play', syncSelectedAudioButton);
-  audio.addEventListener('pause', syncSelectedAudioButton);
-  audio.addEventListener('ended', syncSelectedAudioButton);
+  const syncMiniPlayerButton = (): void => {
+    const miniPlay = panel.querySelector<HTMLButtonElement>('.upload-mini-player__play-btn');
+    if (!miniPlay) return;
+    const isPaused = audio.paused || audio.src !== project.music.audioUrl;
+    miniPlay.innerHTML = isPaused ? PLAY_ICON_SVG : PAUSE_ICON_SVG;
+    miniPlay.classList.toggle('is-playing', !isPaused);
+    miniPlay.setAttribute('aria-label', isPaused ? 'Dengarkan preview lagu' : 'Jeda preview lagu');
+  };
+  audio.addEventListener('play', () => {
+    syncSelectedAudioButton();
+    syncMiniPlayerButton();
+  });
+  audio.addEventListener('pause', () => {
+    syncSelectedAudioButton();
+    syncMiniPlayerButton();
+  });
+  audio.addEventListener('ended', () => {
+    syncSelectedAudioButton();
+    syncMiniPlayerButton();
+  });
   audio.addEventListener('error', () => {
     const message = panel.querySelector<HTMLElement>('.studio-player__status');
     if (message) message.textContent = 'Lagu tidak dapat diputar. Pilih lagu lain atau upload MP3.';
     syncSelectedAudioButton();
+    syncMiniPlayerButton();
   });
   setStatus(status);
   render();
