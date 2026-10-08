@@ -124,8 +124,8 @@ export const giftConfig: GiftConfigV1 = {
     description: 'A private interactive letter, made with care.',
   },
   recipient: {
-    name: 'Enggar Abi Z.',
-    address: 'Enggar Abi Z.',
+    name: 'Al',
+    address: 'Al',
   },
   sender: {
     name: 'Risa Nazmeliani ♡',
@@ -143,10 +143,9 @@ export const giftConfig: GiftConfigV1 = {
   letter: {
     heading: "I'm Sorry, Love...",
     paragraphs: [
-      "I'm writing this because I want to give you some space, but I also need to clear the air about what happened between us. Looking back at our misunderstanding, I realize that my words/actions didn't reflect how I truly feel about you, and I am so sorry for my part in it.",
-      "I hate the feeling of there being a wall between us. It was never my intention to hurt or upset you, but I know that intentions don't change how things landed. Your feelings are completely valid, and it pains me to know that I caused you any stress or doubt.",
-      "Our relationship means the world to me, and I don't want a miscommunication to overshadow the love and respect we've built. I want to listen and truly understand your perspective whenever you are ready to talk.",
-      "please know that i love u so much dan maafin ego aku yang nyakitin kamu yaa sayang. aku mau kamu tetep disini, sama akuu :( i need u, dont leave me aloneeeee please, i promise to be better for us, let’s fix thistogether. I love you more than anything, Abi! ♡",
+      "Aku tulis ini karena kamu berhak dapat permintaan maaf yang tulus. Ngeliat kesalahpahaman kita kemarin, aku sadar banget kalau ego dan reaksiku udah bikin kamu terluka. I am so sorry for my part in this.",
+      "Jujur aku benci banget ada jarak di antara kita. It was never my intention to hurt you, tapi aku tahu niat baik aja nggak bisa menghapus rasa kecewa kamu. Your feelings are completely valid. Apa yang udah kita bangun bareng-bareng itu berharga banget buat aku, dan aku nggak mau miskomunikasi ini merusak semuanya.",
+      "Please know that I love you so much, dan maafin ego aku yang udah nyakitin kamu ya sayang. Aku mau kamu tetap di sini sama aku, I really need you and please don't leave me alone. I promise to be better for us, let's fix this together, Al! ♡",
     ],
     signoff: 'With all my love',
     continueLabel: 'Continue',
@@ -154,10 +153,10 @@ export const giftConfig: GiftConfigV1 = {
     ariaLabel: 'Letter. Use the Skip button to reveal the complete message.',
   },
   music: {
-    title: 'Keep Me',
-    artist: 'Novo Amor',
-    audioUrl: 'https://cdn.for-you-always.my.id/1791371832328-ylylh.mp3',
-    coverUrl: 'https://cdn.for-you-always.my.id/1791371973442-ehods.jpg',
+    title: 'White Ferrari',
+    artist: 'Frank Ocean',
+    audioUrl: 'https://cdn.for-you-always.my.id/1791465566473-v1ppg.mp3',
+    coverUrl: 'https://arcade-edition.aldoramadhan16.workers.dev/files/1773962172841-0qzm1z.jpg',
     emptyMessage: 'Add an audio URL in gift.config.ts to play your song here.',
     errorMessage: "The song couldn't load, but your letter is still here.",
     nowPlayingLabel: 'Now playing',
@@ -170,10 +169,10 @@ export const giftConfig: GiftConfigV1 = {
     positionSeparator: 'of',
     tracks: [
       {
-        title: 'Keep Me',
-        artist: 'Novo Amor',
-        audioUrl: 'https://cdn.for-you-always.my.id/1791371832328-ylylh.mp3',
-        coverUrl: 'https://cdn.for-you-always.my.id/1791371973442-ehods.jpg',
+        title: 'White Ferrari',
+        artist: 'Frank Ocean',
+        audioUrl: 'https://cdn.for-you-always.my.id/1791465566473-v1ppg.mp3',
+        coverUrl: 'https://arcade-edition.aldoramadhan16.workers.dev/files/1773962172841-0qzm1z.jpg',
       },
     ],
   },
