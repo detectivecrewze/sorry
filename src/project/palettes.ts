@@ -89,3 +89,11 @@ export const PALETTES: Record<PaletteId, PaletteDefinition> = {
     },
   },
 };
+
+export function resolvePaletteId(raw: unknown): PaletteId | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const normalized = raw.trim().toLowerCase().replace(/_/g, '-');
+  if (normalized in PALETTES) return normalized as PaletteId;
+  if (normalized === 'dustypurple') return 'dusty-purple';
+  return undefined;
+}

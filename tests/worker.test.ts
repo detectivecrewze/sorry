@@ -36,7 +36,7 @@ function environment(): WorkerEnv {
     GIFT_KV: new MockKV(), MEDIA_BUCKET: new MockR2(),
     MEDIA_BASE_URL: 'https://cdn.example.test', PUBLIC_GIFT_BASE_URL: 'https://gift.example.test',
     PUBLIC_STUDIO_BASE_URL: 'https://gift.example.test', ADMIN_SECRET: 'admin-test-secret',
-    PROJECT_SIGNING_SECRET: 'a-long-test-signing-secret', ALLOWED_ORIGINS: 'https://gift.example.test',
+    GENERATOR_SECRET: 'generator-test-secret', PROJECT_SIGNING_SECRET: 'a-long-test-signing-secret', ALLOWED_ORIGINS: 'https://gift.example.test',
   };
 }
 
@@ -48,6 +48,25 @@ async function call(env: WorkerEnv, path: string, init: RequestInit = {}) {
 }
 
 describe('sorry-letter Worker', () => {
+  it('creates one idempotent Studio project for Pakasir fulfillment', async () => {
+    const env = environment();
+    const headers = { Authorization: 'Bearer generator-test-secret', 'Content-Type': 'application/json' };
+    const payload = JSON.stringify({ source: 'pakasir', idempotencyKey: 'ORDER-SORRY-1790000000000:sorry' });
+    const first = await call(env, '/api/internal/projects', { method: 'POST', headers, body: payload });
+    expect(first.response.status).toBe(201);
+    expect(first.body.created).toBe(true);
+    expect(first.body.projectId).toMatch(/^sorry-[a-f0-9]{16}$/);
+    expect(first.body.studioUrl).toContain(`/studio/${first.body.projectId}#token=`);
+
+    const repeated = await call(env, '/api/internal/projects', { method: 'POST', headers, body: payload });
+    expect(repeated.response.status).toBe(200);
+    expect(repeated.body.created).toBe(false);
+    expect(repeated.body.projectId).toBe(first.body.projectId);
+
+    const rejected = await call(env, '/api/internal/projects', { method: 'POST', headers: { Authorization: 'Bearer wrong', 'Content-Type': 'application/json' }, body: payload });
+    expect(rejected.response.status).toBe(401);
+  });
+
   it('keeps drafts separate, publishes, archives and deletes all media', async () => {
     const env = environment();
     const adminHeaders = { 'X-Admin-Secret': 'admin-test-secret', 'Idempotency-Key': 'same-request', 'Content-Type': 'application/json' };

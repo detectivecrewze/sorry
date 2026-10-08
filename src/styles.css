@@ -1,5 +1,5 @@
 :root {
-  font-family: 'Caveat', cursive, sans-serif;
+  font-family: 'Manrope', sans-serif;
   color: var(--color-text, #fff8f4);
   background: var(--color-background-deep, #3b0207);
   font-synthesis: none;
@@ -26,7 +26,7 @@ body,
 body {
   overflow: hidden;
   background: var(--color-background-deep, #3b0207);
-  font-family: 'Caveat', cursive, sans-serif;
+  font-family: 'Manrope', sans-serif;
 }
 
 button,
@@ -218,6 +218,7 @@ input:focus-visible {
   max-width: 34rem;
   margin: 0;
   color: var(--color-muted, #e5c7c8);
+  font-family: 'Caveat', cursive;
   font-size: clamp(1.05rem, 2.3vw, 1.42rem);
   line-height: 1.55;
   text-wrap: balance;

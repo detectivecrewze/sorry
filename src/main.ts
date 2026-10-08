@@ -5,6 +5,11 @@ import '@fontsource/caveat/latin-600.css';
 import '@fontsource/caveat/latin-700.css';
 import '@fontsource/manrope/latin-500.css';
 import '@fontsource/manrope/latin-600.css';
+import '@fontsource/nunito-sans/latin-400.css';
+import '@fontsource/nunito-sans/latin-500.css';
+import '@fontsource/nunito-sans/latin-600.css';
+import '@fontsource/nunito-sans/latin-700.css';
+import '@fontsource/nunito-sans/latin-800.css';
 import './styles.css';
 import './workspace.css';
 
@@ -12,6 +17,8 @@ import { mountAdmin } from './admin/mountAdmin';
 import { mountPublicGift } from './pages/mountPublicGift';
 import { projectToGiftConfig } from './project/adapter';
 import { demoProject } from './project/fixture';
+import { resolvePaletteId } from './project/palettes';
+import type { PaletteId } from './project/schema';
 import { mountGift } from './renderer/mountGift';
 import { mountStudio } from './studio/mountStudio';
 
@@ -22,7 +29,15 @@ const root = app;
 const path = window.location.pathname.replace(/\/+$/, '') || '/';
 let cleanup: (() => void) | undefined;
 
+function getThemeOverride(): PaletteId | undefined {
+  const searchParams = new URLSearchParams(window.location.search);
+  const rawTheme = searchParams.get('theme') || searchParams.get('palette');
+  return resolvePaletteId(rawTheme);
+}
+
 async function route(): Promise<void> {
+  const themeOverride = getThemeOverride();
+
   if (path === '/admin') {
     document.documentElement.className = 'workspace-root';
     document.body.className = 'workspace-page admin-page';
@@ -40,12 +55,13 @@ async function route(): Promise<void> {
   if (giftMatch) {
     document.documentElement.className = 'gift-root';
     document.body.className = 'gift-page';
-    cleanup = await mountPublicGift(root, decodeURIComponent(giftMatch[1]));
+    cleanup = await mountPublicGift(root, decodeURIComponent(giftMatch[1]), themeOverride);
     return;
   }
   document.documentElement.className = 'gift-root';
   document.body.className = 'gift-page';
-  cleanup = mountGift(root, projectToGiftConfig(demoProject));
+  const activeDemo = themeOverride ? { ...demoProject, paletteId: themeOverride } : demoProject;
+  cleanup = mountGift(root, projectToGiftConfig(activeDemo));
 }
 
 void route();

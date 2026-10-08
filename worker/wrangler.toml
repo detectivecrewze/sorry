@@ -20,4 +20,5 @@ preview_bucket_name = "sorry-letter-media-local"
 
 # Configure secrets before deployment:
 # wrangler secret put ADMIN_SECRET
+# wrangler secret put GENERATOR_SECRET
 # wrangler secret put PROJECT_SIGNING_SECRET

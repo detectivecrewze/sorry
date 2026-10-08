@@ -29,6 +29,7 @@ export interface WorkerEnv {
   PUBLIC_GIFT_BASE_URL: string;
   PUBLIC_STUDIO_BASE_URL: string;
   ADMIN_SECRET: string;
+  GENERATOR_SECRET: string;
   PROJECT_SIGNING_SECRET: string;
   ALLOWED_ORIGINS: string;
 }
@@ -102,6 +103,12 @@ async function verifyStudio(request: Request, env: WorkerEnv, projectId: string)
 function verifyAdmin(request: Request, env: WorkerEnv): void {
   if (!env.ADMIN_SECRET) throw new HttpError(500, 'ADMIN_SECRET belum dikonfigurasi.');
   if (request.headers.get('X-Admin-Secret') !== env.ADMIN_SECRET) throw new HttpError(401, 'Password admin salah.');
+}
+
+function verifyGenerator(request: Request, env: WorkerEnv): void {
+  if (!env.GENERATOR_SECRET) throw new HttpError(500, 'GENERATOR_SECRET belum dikonfigurasi.');
+  const token = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '').trim() || '';
+  if (token !== env.GENERATOR_SECRET) throw new HttpError(401, 'Generator secret tidak valid.');
 }
 
 function publicProject(record: SorryGiftProjectV1 & { editTokenHash?: string }): SorryGiftProjectV1 {
@@ -187,6 +194,37 @@ async function route(request: Request, env: WorkerEnv): Promise<Response> {
         mediaBaseUrl: Boolean(env.MEDIA_BASE_URL),
       },
     });
+  }
+
+  if (path === '/api/internal/projects' && request.method === 'POST') {
+    verifyGenerator(request, env);
+    const body = await readJson<{ source?: string; idempotencyKey?: string }>(request);
+    const source = String(body.source || '').trim().toLowerCase();
+    const requestKey = String(body.idempotencyKey || '').trim();
+    if (source !== 'pakasir') throw new HttpError(400, 'Source generator tidak valid.');
+    if (!requestKey || requestKey.length > 200) throw new HttpError(400, 'Idempotency key tidak valid.');
+
+    const mappingKey = idempotencyKey(await digest(`internal:${source}:${requestKey}`));
+    const existingId = await env.GIFT_KV.get(mappingKey);
+    if (existingId) {
+      const existing = await getRecord(env, draftKey(existingId)) || await getRecord(env, projectKey(existingId));
+      if (existing) {
+        const payload = await buildAdminPayload(env, publicProject(existing));
+        return json({ created: false, projectId: existingId, status: payload.project.status, studioUrl: payload.studioUrl, giftUrl: payload.giftUrl });
+      }
+    }
+
+    const projectId = randomProjectId();
+    const project = createBlankProject(projectId);
+    const token = await deriveEditToken(projectId, env.PROJECT_SIGNING_SECRET);
+    const record = { ...project, editTokenHash: await digest(token) };
+    await Promise.all([
+      env.GIFT_KV.put(projectKey(projectId), JSON.stringify(record)),
+      env.GIFT_KV.put(draftKey(projectId), JSON.stringify(record)),
+      env.GIFT_KV.put(mappingKey, projectId),
+    ]);
+    const payload = await buildAdminPayload(env, project);
+    return json({ created: true, projectId, status: project.status, studioUrl: payload.studioUrl, giftUrl: payload.giftUrl }, 201);
   }
 
   const mediaMatch = path.match(/^\/api\/media\/(sorry-letter\/[^/]+\/(?:audio|covers)\/[^/]+)$/);

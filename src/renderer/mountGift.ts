@@ -1,4 +1,6 @@
 import type { GiftConfigV1 } from '../config/gift.config';
+import { PALETTES, resolvePaletteId } from '../project/palettes';
+import type { PaletteId } from '../project/schema';
 import { GiftStateMachine, type GiftEvent, type SceneId } from '../state/machine';
 
 interface MusicElements {
@@ -746,11 +748,37 @@ export function mountGift(target: HTMLElement, config: GiftConfigV1, options: Mo
     }
   };
 
+  const applyPalette = (paletteId: PaletteId): void => {
+    const palette = PALETTES[paletteId];
+    if (!palette) return;
+    config.theme = palette.theme;
+    config.media.envelopeUrl = palette.envelopeUrl;
+    setTheme(config, options.embedded ? shell : document.documentElement);
+    const envelopeImage = shell.querySelector<HTMLImageElement>('.envelope-art__image');
+    if (envelopeImage) {
+      envelopeImage.src = palette.envelopeUrl;
+    }
+  };
+
+  const messageHandler = (event: MessageEvent): void => {
+    if (!event.data || typeof event.data !== 'object') return;
+    const data = event.data as Record<string, unknown>;
+    const targetCandidate = data.type === 'SET_THEME' || data.type === 'THEME_CHANGE'
+      ? data.theme || data.palette
+      : (data.theme || data.palette);
+    const targetTheme = resolvePaletteId(targetCandidate);
+    if (targetTheme) {
+      applyPalette(targetTheme);
+    }
+  };
+
+  window.addEventListener('message', messageHandler);
   shell.addEventListener('click', clickHandler);
   shell.addEventListener('keydown', keyHandler);
   activate(machine.scene, true);
 
   return () => {
+    window.removeEventListener('message', messageHandler);
     cancelTimers();
     music.destroy();
     shell.removeEventListener('click', clickHandler);
