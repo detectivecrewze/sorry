@@ -10,6 +10,7 @@ import {
 import { MASCOTS } from '../project/mascots';
 import { PALETTES } from '../project/palettes';
 import { button, copyText, el, field, formatDate, setBusy, trapFocus } from '../ui/dom';
+import { projectLinkForCurrentApp } from './projectLinks';
 
 const SESSION_KEY = 'sorry-letter:admin-secret';
 
@@ -40,6 +41,9 @@ export function mountAdmin(target: HTMLElement): () => void {
   let statusFilter = 'all';
   const shell = el('main', 'admin-shell');
   target.replaceChildren(shell);
+
+  const usesLocalApp = ['127.0.0.1', 'localhost'].includes(window.location.hostname);
+  const projectLink = (url: string | null): string | null => projectLinkForCurrentApp(url, window.location.origin, usesLocalApp);
 
   function showLogin(error = ''): void {
     shell.replaceChildren();
@@ -74,9 +78,9 @@ export function mountAdmin(target: HTMLElement): () => void {
     const projectId = el('code', 'project-code', result.project.projectId);
     dialog.content.append(el('p', '', 'Kirim Studio link kepada customer. Gift link akan aktif setelah customer memublikasikan project.'), projectId);
     const links: Array<[string, string | null, boolean]> = [
-      ['Copy Studio Link', result.studioUrl, false],
-      ['Open Studio', result.studioUrl, true],
-      ['Copy Gift Link', result.giftUrl, false],
+      ['Copy Studio Link', projectLink(result.studioUrl), false],
+      ['Open Studio', projectLink(result.studioUrl), true],
+      ['Copy Gift Link', projectLink(result.giftUrl), false],
     ];
     const actions = el('div', 'modal-actions');
     links.forEach(([label, url, open]) => {
@@ -133,9 +137,11 @@ export function mountAdmin(target: HTMLElement): () => void {
     });
     const actions = el('div', 'project-actions');
     const copyStudio = button('Copy Studio', 'text-button');
-    copyStudio.addEventListener('click', async () => { await copyText(project.studioUrl); copyStudio.textContent = 'Tersalin'; });
-    const openStudio = button('Open Studio', 'text-button'); openStudio.addEventListener('click', () => window.open(project.studioUrl, '_blank', 'noopener,noreferrer'));
-    const openGift = button('Open Gift', 'text-button'); openGift.disabled = !project.giftUrl; openGift.addEventListener('click', () => project.giftUrl && window.open(project.giftUrl, '_blank', 'noopener,noreferrer'));
+    const studioUrl = projectLink(project.studioUrl);
+    const giftUrl = projectLink(project.giftUrl);
+    copyStudio.addEventListener('click', async () => { if (studioUrl) await copyText(studioUrl); copyStudio.textContent = 'Tersalin'; });
+    const openStudio = button('Open Studio', 'text-button'); openStudio.addEventListener('click', () => studioUrl && window.open(studioUrl, '_blank', 'noopener,noreferrer'));
+    const openGift = button('Open Gift', 'text-button'); openGift.disabled = !giftUrl; openGift.addEventListener('click', () => giftUrl && window.open(giftUrl, '_blank', 'noopener,noreferrer'));
     const archive = button(project.status === 'archived' ? 'Restore' : 'Archive', 'text-button');
     archive.addEventListener('click', async () => {
       archive.disabled = true;

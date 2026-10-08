@@ -209,7 +209,7 @@ try {
     }
     return route.fulfill({ status: 404, headers: cors, body: JSON.stringify({ error: 'Not mocked' }) });
   };
-  await studioContext.route('http://127.0.0.1:8787/**', mockApi);
+  await studioContext.route('**/api/**', mockApi);
   const missingTokenPage = await studioContext.newPage();
   await missingTokenPage.goto(`${baseUrl}studio/${dynamicId}`, { waitUntil: 'domcontentloaded' });
   assert(await missingTokenPage.getByText('Magic link belum tersimpan').isVisible(), 'Studio without a token must show a clear recovery state.');
@@ -297,7 +297,7 @@ try {
   await studioContext.close();
 
   const adminContext = await browser.newContext({ viewport: { width: 1024, height: 768 } });
-  await adminContext.route('http://127.0.0.1:8787/**', mockApi);
+  await adminContext.route('**/api/**', mockApi);
   const adminPage = await adminContext.newPage();
   await adminPage.goto(`${baseUrl}admin`, { waitUntil: 'domcontentloaded' });
   await adminPage.getByLabel('Admin secret').fill('test-admin');

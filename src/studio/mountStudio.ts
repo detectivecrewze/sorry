@@ -1255,7 +1255,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           const changeBtn = button('Ganti File Lagu', 'ui-button ui-button--secondary');
           changeBtn.addEventListener('click', () => input.click());
 
-          const deleteBtn = button('', 'ui-button--danger-outline');
+          const deleteBtn = button('', 'ui-button ui-button--danger-outline');
           deleteBtn.innerHTML = `${TRASH_ICON_SVG}<span>Hapus Lagu</span>`;
           deleteBtn.setAttribute('aria-label', 'Hapus lagu yang sudah diunggah');
           deleteBtn.addEventListener('click', () => {
@@ -1316,7 +1316,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           const changeBtn = button('Ganti Foto Cover', 'ui-button ui-button--secondary');
           changeBtn.addEventListener('click', () => input.click());
 
-          const deleteBtn = button('', 'ui-button--danger-outline');
+          const deleteBtn = button('', 'ui-button ui-button--danger-outline');
           deleteBtn.innerHTML = `${TRASH_ICON_SVG}<span>Hapus Cover</span>`;
           deleteBtn.setAttribute('aria-label', 'Hapus cover foto yang sudah diunggah');
           deleteBtn.addEventListener('click', () => {
