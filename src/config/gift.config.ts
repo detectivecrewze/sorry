@@ -128,7 +128,7 @@ export const giftConfig: GiftConfigV1 = {
     address: 'Al',
   },
   sender: {
-    name: 'Risa Nazmeliani ♡',
+    name: 'Lis',
   },
   intro: {
     title: "I'm Sorry, Love...",
@@ -143,11 +143,12 @@ export const giftConfig: GiftConfigV1 = {
   letter: {
     heading: "I'm Sorry, Love...",
     paragraphs: [
+      "Dear Al..",
       "Aku tulis ini karena kamu berhak dapat permintaan maaf yang tulus. Ngeliat kesalahpahaman kita kemarin, aku sadar banget kalau ego dan reaksiku udah bikin kamu terluka. I am so sorry for my part in this.",
       "Jujur aku benci banget ada jarak di antara kita. It was never my intention to hurt you, tapi aku tahu niat baik aja nggak bisa menghapus rasa kecewa kamu. Your feelings are completely valid. Apa yang udah kita bangun bareng-bareng itu berharga banget buat aku, dan aku nggak mau miskomunikasi ini merusak semuanya.",
       "Please know that I love you so much, dan maafin ego aku yang udah nyakitin kamu ya sayang. Aku mau kamu tetap di sini sama aku, I really need you and please don't leave me alone. I promise to be better for us, let's fix this together, Al! ♡",
     ],
-    signoff: 'With all my love',
+    signoff: 'with all my love, Lis',
     continueLabel: 'Continue',
     skipLabel: 'Skip',
     ariaLabel: 'Letter. Use the Skip button to reveal the complete message.',
