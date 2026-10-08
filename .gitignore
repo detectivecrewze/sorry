@@ -1,0 +1,13 @@
+node_modules
+dist
+.vite
+*.log
+*.tsbuildinfo
+.vercel
+.dev.vars
+.wrangler
+worker/.dev.vars
+worker/.wrangler
+.env
+.env.local
+.env.*.local

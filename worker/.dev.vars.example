@@ -1,0 +1,2 @@
+ADMIN_SECRET=replace-with-a-local-admin-secret
+PROJECT_SIGNING_SECRET=replace-with-a-long-random-local-signing-secret
