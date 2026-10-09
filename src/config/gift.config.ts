@@ -154,10 +154,10 @@ export const giftConfig: GiftConfigV1 = {
     ariaLabel: 'Letter. Use the Skip button to reveal the complete message.',
   },
   music: {
-    title: 'White Ferrari',
-    artist: 'Frank Ocean',
-    audioUrl: 'https://cdn.for-you-always.my.id/1791465566473-v1ppg.mp3',
-    coverUrl: 'https://cdn.for-you-always.my.id/1791466716102-9gvgds.jpg',
+    title: 'Promise',
+    artist: 'Laufey',
+    audioUrl: 'https://cdn.for-you-always.my.id/1791567694002-yj6vzujp.mp3',
+    coverUrl: 'https://cdn.for-you-always.my.id/1791567932279-lm8e5o.jpg',
     emptyMessage: 'Add an audio URL in gift.config.ts to play your song here.',
     errorMessage: "The song couldn't load, but your letter is still here.",
     nowPlayingLabel: 'Now playing',
@@ -169,6 +169,12 @@ export const giftConfig: GiftConfigV1 = {
     progressLabel: 'Song progress',
     positionSeparator: 'of',
     tracks: [
+      {
+        title: 'Promise',
+        artist: 'Laufey',
+        audioUrl: 'https://cdn.for-you-always.my.id/1791567694002-yj6vzujp.mp3',
+        coverUrl: 'https://cdn.for-you-always.my.id/1791567932279-lm8e5o.jpg',
+      },
       {
         title: 'White Ferrari',
         artist: 'Frank Ocean',

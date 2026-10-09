@@ -25,11 +25,17 @@ export const demoProject: SorryGiftProjectV1 = {
     signoff: 'with all my love, Lis',
   },
   music: {
-    audioUrl: 'https://cdn.for-you-always.my.id/1791465566473-v1ppg.mp3',
-    coverUrl: 'https://cdn.for-you-always.my.id/1791466716102-9gvgds.jpg',
-    title: 'White Ferrari',
-    artist: 'Frank Ocean',
+    audioUrl: 'https://cdn.for-you-always.my.id/1791567694002-yj6vzujp.mp3',
+    coverUrl: 'https://cdn.for-you-always.my.id/1791567932279-lm8e5o.jpg',
+    title: 'Promise',
+    artist: 'Laufey',
     tracks: [
+      {
+        audioUrl: 'https://cdn.for-you-always.my.id/1791567694002-yj6vzujp.mp3',
+        coverUrl: 'https://cdn.for-you-always.my.id/1791567932279-lm8e5o.jpg',
+        title: 'Promise',
+        artist: 'Laufey',
+      },
       {
         audioUrl: 'https://cdn.for-you-always.my.id/1791465566473-v1ppg.mp3',
         coverUrl: 'https://cdn.for-you-always.my.id/1791466716102-9gvgds.jpg',
