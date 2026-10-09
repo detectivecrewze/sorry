@@ -76,11 +76,26 @@ try {
   assert((await activeScene(page)) === 'letter', 'Read must open the letter.');
   assert(await page.locator('audio').evaluate((audio) => Boolean(audio.currentSrc)), 'Configured audio should have a source.');
   assert(await page.locator('.scene--letter .character').count() === 0, 'Letter scene should not render a mascot.');
-  await page.waitForTimeout(650);
   const firstParagraph = page.locator('.letter-card .js-letter-type').first();
-  const partialLetter = await firstParagraph.textContent();
   const completeLetter = await firstParagraph.getAttribute('data-full-text');
+  let partialLetter = await firstParagraph.textContent();
+  for (let attempt = 0; attempt < 20 && (!partialLetter || partialLetter === completeLetter); attempt += 1) {
+    await page.waitForTimeout(160);
+    partialLetter = await firstParagraph.textContent();
+  }
   assert(Boolean(partialLetter && completeLetter && partialLetter.length < completeLetter.length), 'Letter should reveal progressively.');
+  const volumeSlider = page.getByRole('slider', { name: 'Music volume' });
+  assert((await volumeSlider.inputValue()) === '50', 'Music volume control must start at 50%.');
+  assert(
+    await page.locator('audio').evaluate((audio) => Math.abs(audio.volume - 0.5) < 0.001),
+    'Audio playback must start at 50% volume.',
+  );
+  await volumeSlider.fill('25');
+  assert(
+    await page.locator('audio').evaluate((audio) => Math.abs(audio.volume - 0.25) < 0.001),
+    'Volume slider must update the audio volume.',
+  );
+  assert((await page.locator('.music-player__volume-value').textContent()) === '25%', 'Volume value must follow the slider.');
   assert(!(await page.locator('.letter-continue').isVisible()), 'Continue must wait until the letter is revealed.');
   assert(await page.getByRole('button', { name: 'Skip' }).isVisible(), 'Letter must expose an explicit Skip control while typing.');
   await page.screenshot({ path: join(qaDirectory, 'desktop-letter.png') });

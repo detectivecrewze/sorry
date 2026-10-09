@@ -7,6 +7,9 @@ interface MusicElements {
   audio: HTMLAudioElement;
   button: HTMLButtonElement;
   progress: HTMLInputElement;
+  volume: HTMLInputElement;
+  volumeValue: HTMLElement;
+  volumeIcon: HTMLElement;
   current: HTMLElement;
   duration: HTMLElement;
   status: HTMLElement;
@@ -212,6 +215,28 @@ function createMusicPlayer(config: GiftConfigV1): { root: HTMLElement; elements:
   timeline.append(current, progress, duration);
   details.append(timeline);
 
+  const volumeControl = element('div', 'music-player__volume');
+  const volumeIcon = element('span', 'music-player__volume-icon');
+  volumeIcon.setAttribute('aria-hidden', 'true');
+  volumeIcon.innerHTML = [
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">',
+    '<path d="M4 9.5v5h3.6L12 18V6L7.6 9.5H4Z" fill="currentColor"/>',
+    '<path class="music-player__volume-wave music-player__volume-wave--inner" d="M15 9.2a4 4 0 0 1 0 5.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    '<path class="music-player__volume-wave music-player__volume-wave--outer" d="M17.6 6.7a7.5 7.5 0 0 1 0 10.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    '</svg>',
+  ].join('');
+  const volume = element('input');
+  volume.type = 'range';
+  volume.min = '0';
+  volume.max = '100';
+  volume.value = '50';
+  volume.step = '1';
+  volume.setAttribute('aria-label', config.locale === 'id' ? 'Volume musik' : 'Music volume');
+  volume.style.setProperty('--volume', '50%');
+  const volumeValue = element('span', 'music-player__volume-value', '50%');
+  volumeControl.append(volumeIcon, volume, volumeValue);
+  details.append(volumeControl);
+
   const status = element('p', 'music-player__status');
   status.setAttribute('aria-live', 'polite');
   root.append(cover, details, status);
@@ -219,12 +244,14 @@ function createMusicPlayer(config: GiftConfigV1): { root: HTMLElement; elements:
   const audio = element('audio');
   audio.preload = 'metadata';
   audio.loop = !hasMultiple;
+  audio.volume = 0.5;
   if (initialTrack.audioUrl) audio.src = initialTrack.audioUrl;
   root.append(audio);
 
   if (!initialTrack.audioUrl) {
     button.disabled = true;
     progress.disabled = true;
+    volume.disabled = true;
     status.textContent = config.music.emptyMessage;
   }
 
@@ -234,6 +261,9 @@ function createMusicPlayer(config: GiftConfigV1): { root: HTMLElement; elements:
       audio,
       button,
       progress,
+      volume,
+      volumeValue,
+      volumeIcon,
       current,
       duration,
       status,
@@ -338,6 +368,9 @@ function setupMusic(elements: MusicElements, config: GiftConfigV1): {
     audio,
     button,
     progress,
+    volume,
+    volumeValue,
+    volumeIcon,
     current,
     duration,
     status,
@@ -361,6 +394,18 @@ function setupMusic(elements: MusicElements, config: GiftConfigV1): {
   const tracks = rawTracks.filter((t) => Boolean(t.audioUrl));
   let currentTrackIndex = 0;
   let marqueeFrame = 0;
+
+  const updateVolume = (): void => {
+    const nextVolume = Math.min(1, Math.max(0, Number(volume.value) / 100));
+    audio.volume = nextVolume;
+    const percentage = Math.round(nextVolume * 100);
+    volume.style.setProperty('--volume', `${percentage}%`);
+    volumeValue.textContent = `${percentage}%`;
+    volumeIcon.classList.toggle('is-muted', percentage === 0);
+    volumeIcon.classList.toggle('is-low', percentage > 0 && percentage < 50);
+  };
+
+  updateVolume();
 
   const refreshMarquee = (): void => {
     if (!titleViewport || !titleNode) return;
@@ -455,6 +500,8 @@ function setupMusic(elements: MusicElements, config: GiftConfigV1): {
     progress.style.setProperty('--progress', `${progress.value}%`);
     audio.currentTime = (Number(progress.value) / 100) * audio.duration;
   });
+
+  volume.addEventListener('input', updateVolume);
 
   audio.addEventListener('loadedmetadata', () => {
     duration.textContent = formatTime(audio.duration);
