@@ -1,4 +1,5 @@
 import type { SorryGiftProjectV1 } from './schema';
+import { PROJECT_CONTENT_PRESETS } from './presets';
 
 const now = '2026-10-07T00:00:00.000Z';
 
@@ -60,41 +61,18 @@ export const demoProject: SorryGiftProjectV1 = {
 };
 
 export function createBlankProject(projectId: string, date = new Date().toISOString()): SorryGiftProjectV1 {
+  const preset = structuredClone(PROJECT_CONTENT_PRESETS.id);
   return {
     ...structuredClone(demoProject),
     projectId,
     status: 'draft',
     locale: 'id',
     identity: { recipient: '', sender: '' },
-    intro: {
-      title: 'Maafkan Aku, Sayang...',
-      subtitle: 'Sebuah ruang kecil untuk menyampaikan isi hati dan memperbaiki semuanya bersama.',
-    },
-    letter: {
-      heading: 'Untuk Kamu yang Paling Berarti...',
-      paragraphs: [
-        'Aku menulis surat ini karena ingin menyampaikan isi hatiku dengan jujur. Aku benar-benar minta maaf atas sikap dan kata-kataku yang sudah membuat kamu terluka.',
-        'Hubungan kita sangat berarti untukku. Kalau kamu sudah siap, aku ingin mendengarkan perasaanmu dan memperbaiki semuanya bersama-sama.',
-      ],
-      signoff: 'Dengan segenap cintaku',
-    },
+    intro: preset.intro,
+    letter: preset.letter,
     music: { audioUrl: '', coverUrl: '', title: '', artist: '', tracks: [] },
-    question: { heading: 'Maukah kamu memaafkanku?' },
-    endings: {
-      accepted: {
-        heading: 'Terima kasih sudah memaafkanku!',
-        body: 'Terima kasih sudah memberi kita kesempatan untuk memperbaiki semuanya bersama.',
-      },
-      needTime: {
-        heading: 'Ambil waktu yang kamu butuhkan, ya.',
-        body: 'Tidak ada paksaan. Aku akan tetap di sini ketika kamu sudah siap.',
-        loveLine: 'Aku sayang kamu.',
-      },
-      promise: {
-        heading: 'Aku berjanji akan menjadi lebih baik.',
-        body: 'Terima kasih sudah tetap memilih kita.',
-      },
-    },
+    question: preset.question,
+    endings: preset.endings,
     createdAt: date,
     updatedAt: date,
     publishedAt: null,

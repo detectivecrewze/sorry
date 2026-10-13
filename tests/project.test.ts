@@ -3,6 +3,7 @@ import { projectToGiftConfig } from '../src/project/adapter';
 import { createBlankProject, demoProject } from '../src/project/fixture';
 import { MASCOTS } from '../src/project/mascots';
 import { PALETTES } from '../src/project/palettes';
+import { applyInitialLocalePreset, isPristineBlankProject, PROJECT_CONTENT_PRESETS } from '../src/project/presets';
 import { normalizeProject, parseLetterText, validateProjectForPublish, type MascotId, type PaletteId } from '../src/project/schema';
 
 describe('SorryGiftProjectV1', () => {
@@ -60,6 +61,25 @@ describe('SorryGiftProjectV1', () => {
     const english = projectToGiftConfig({ ...blank, locale: 'en' });
     expect(english.intro.startLabel).toBe('Start');
     expect(english.letter.paragraphs).toEqual(blank.letter.paragraphs);
+  });
+
+  it('applies the English onboarding preset only to an untouched blank project', () => {
+    const blank = createBlankProject('sorry-0123456789abcdef');
+    expect(isPristineBlankProject(blank)).toBe(true);
+    expect(applyInitialLocalePreset(blank, 'en')).toBe(true);
+    expect(blank.locale).toBe('en');
+    expect(blank.intro).toEqual(PROJECT_CONTENT_PRESETS.en.intro);
+    expect(blank.letter.paragraphs).toEqual(PROJECT_CONTENT_PRESETS.en.letter.paragraphs);
+    expect(blank.letter.paragraphs.join(' ')).not.toMatch(/\baku\b|\bkamu\b/i);
+  });
+
+  it('never replaces customer copy when the onboarding language changes', () => {
+    const edited = createBlankProject('sorry-fedcba9876543210');
+    edited.letter.paragraphs = ['This is my own letter.'];
+    expect(isPristineBlankProject(edited)).toBe(false);
+    expect(applyInitialLocalePreset(edited, 'en')).toBe(false);
+    expect(edited.locale).toBe('en');
+    expect(edited.letter.paragraphs).toEqual(['This is my own letter.']);
   });
 
   it('keeps primary and muted text WCAG AA across every palette surface', () => {

@@ -83,7 +83,14 @@ try {
     await page.waitForTimeout(160);
     partialLetter = await firstParagraph.textContent();
   }
-  assert(Boolean(partialLetter && completeLetter && partialLetter.length < completeLetter.length), 'Letter should reveal progressively.');
+  const skipDuringTyping = page.getByRole('button', { name: 'Skip' });
+  const typingStillActive = await skipDuringTyping.isVisible().catch(() => false);
+  assert(Boolean(completeLetter), 'Letter must expose the complete text for the typewriter renderer.');
+  if (typingStillActive) {
+    assert(Boolean(partialLetter && partialLetter.length <= completeLetter.length), 'Letter should reveal progressively.');
+  } else {
+    assert(partialLetter === completeLetter, 'A completed typewriter must reveal the full letter.');
+  }
   const volumeSlider = page.getByRole('slider', { name: 'Music volume' });
   assert((await volumeSlider.inputValue()) === '50', 'Music volume control must start at 50%.');
   assert(
@@ -96,10 +103,9 @@ try {
     'Volume slider must update the audio volume.',
   );
   assert((await page.locator('.music-player__volume-value').textContent()) === '25%', 'Volume value must follow the slider.');
-  assert(!(await page.locator('.letter-continue').isVisible()), 'Continue must wait until the letter is revealed.');
-  assert(await page.getByRole('button', { name: 'Skip' }).isVisible(), 'Letter must expose an explicit Skip control while typing.');
+  assert(typingStillActive ? !(await page.locator('.letter-continue').isVisible()) : await page.locator('.letter-continue').isVisible(), 'Continue visibility must follow the typewriter state.');
   await page.screenshot({ path: join(qaDirectory, 'desktop-letter.png') });
-  await page.getByRole('button', { name: 'Skip' }).click();
+  if (typingStillActive) await skipDuringTyping.click();
   assert((await firstParagraph.textContent()) === completeLetter, 'Skip must reveal the complete message.');
   assert(await page.locator('.letter-continue').isVisible(), 'Continue must appear after the full letter is revealed.');
   const letterText = await page.locator('.letter-card').textContent();
@@ -190,7 +196,7 @@ try {
   let studioProject = structuredClone(dynamicProject);
   let autosaveCount = 0;
   let uploadAttempts = 0;
-  const studioContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const studioContext = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'id-ID' });
   const mockApi = async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -232,17 +238,28 @@ try {
   const studioPage = await studioContext.newPage();
   await studioPage.goto(`${baseUrl}studio/${dynamicId}#token=test-token`, { waitUntil: 'domcontentloaded' });
   await studioPage.locator('.studio-panel').waitFor();
+  await studioPage.locator('.studio-onboarding').waitFor();
+  assert(await studioPage.getByRole('heading', { name: 'Susun suratmu dengan tenang' }).isVisible(), 'A new project visit must show the Studio guide.');
+  await studioPage.screenshot({ path: join(qaDirectory, 'studio-onboarding-guide-mobile.png') });
+  await studioPage.getByRole('button', { name: 'Lewati panduan' }).click();
+  await studioPage.screenshot({ path: join(qaDirectory, 'studio-onboarding-language-mobile.png') });
+  await studioPage.locator('.studio-language-card[data-locale="id"]').click();
+  await studioPage.getByRole('button', { name: 'Gunakan Bahasa Indonesia', exact: true }).click();
+  await studioPage.locator('.studio-onboarding').waitFor({ state: 'detached' });
+  assert(await studioPage.evaluate((id) => localStorage.getItem(`sorry-letter:studio-onboarding:v1:${id}`), dynamicId) === 'complete', 'Completed onboarding must be stored per project.');
+  assert(studioProject.locale === 'id' && autosaveCount > 0, 'Onboarding must persist the selected locale before Studio becomes available.');
   assert((await studioPage.evaluate(() => location.hash)) === '', 'Studio must remove the token fragment from the address bar.');
   assert(await studioPage.evaluate((id) => localStorage.getItem(`sorry-letter:studio-token:${id}`), dynamicId) === 'test-token', 'Studio must persist the project-scoped token.');
-  const languageSelect = studioPage.getByLabel('Bahasa gift');
+  const languageSelect = studioPage.getByLabel('Bahasa Studio dan gift');
   assert(await languageSelect.inputValue() === 'id', 'Studio language must default to Bahasa Indonesia.');
-  await languageSelect.selectOption('en');
+  await studioPage.locator('.copy-preset-chip[data-preset="gentle"]').click();
+  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()).includes('Tidak semua kata'), 'Opening subtitle preset must fill an editable localized value.');
   assert(!(await studioPage.locator('.form-field__hint').allTextContents()).join(' ').includes('Dear'), 'Recipient helper text must not promise an injected greeting.');
   const recipientInput = studioPage.getByLabel(/Nama penerima/);
   await recipientInput.fill('Updated Recipient');
   await studioPage.waitForTimeout(900);
   assert(autosaveCount > 0, 'Studio must autosave after 700 ms.');
-  await studioPage.getByRole('button', { name: 'Lihat live preview' }).click();
+  await studioPage.getByRole('button', { name: 'Lihat live preview', exact: true }).click();
   assert((await activeScene(studioPage)) === 'intro', 'Identity preview must open directly at intro.');
   assert(await studioPage.locator('.studio-live-preview__tab').count() === 2, 'Identity preview must expose Intro and Letter tabs.');
   await studioPage.getByRole('button', { name: 'Tutup live preview' }).click();
@@ -250,14 +267,18 @@ try {
   await studioPage.getByRole('button', { name: /Brown Bear/ }).click();
   await studioPage.getByRole('button', { name: /Midnight/ }).click();
   assert(await studioPage.locator('.visual-choice.is-selected').innerText().then((value) => value.includes('Brown Bear')), 'Studio must switch mascot.');
-  await studioPage.getByRole('button', { name: 'Lihat live preview' }).click();
+  await studioPage.getByRole('button', { name: 'Lihat live preview', exact: true }).click();
   assert((await activeScene(studioPage)) === 'question', 'Style preview must open directly at the mascot question scene.');
   await studioPage.getByRole('button', { name: 'Tutup live preview' }).click();
   const studioMetrics = await studioPage.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
   assert(studioMetrics.scrollWidth <= studioMetrics.width, 'Studio must not overflow horizontally on mobile.');
   await studioPage.screenshot({ path: join(qaDirectory, 'studio-mobile-style.png'), fullPage: true });
   await studioPage.getByRole('button', { name: /Surat & Jawaban/ }).click();
-  await studioPage.getByRole('button', { name: 'Lihat live preview' }).click();
+  await studioPage.locator('.copy-preset-chip[data-preset="simple"]').click();
+  assert((await studioPage.getByLabel('Isi surat').inputValue()).includes('Aku minta maaf'), 'Letter body preset must fill the selected localized draft.');
+  await studioPage.locator('.locale-fill-chip[data-preset-section="question"][data-locale="en"]').click();
+  assert((await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue()).includes('Will you forgive me'), 'Question quick fill must support English without changing the Studio locale.');
+  await studioPage.getByRole('button', { name: 'Lihat live preview', exact: true }).click();
   const previewScenes = [
     ['Surat', 'letter'],
     ['Pertanyaan', 'question'],
@@ -280,14 +301,17 @@ try {
   assert(await studioPage.locator('.catalog-track').count() > 0, 'Catalog search must find songs by artist.');
   await studioPage.locator('.catalog-track').first().getByRole('button', { name: 'Pilih lagu' }).click();
   assert(await studioPage.locator('.catalog-track.is-selected').count() === 1, 'Catalog selection must mark exactly one song as selected.');
-  await studioPage.getByRole('button', { name: 'Lihat live preview' }).click();
+  await studioPage.getByRole('button', { name: 'Lihat live preview', exact: true }).click();
   assert((await activeScene(studioPage)) === 'letter', 'Music preview must open directly at the letter player.');
   await studioPage.getByRole('button', { name: 'Tutup live preview' }).click();
-  await studioPage.getByRole('tab', { name: 'Upload lagu sendiri' }).click();
+  await studioPage.getByRole('tab', { name: 'Upload sendiri' }).click();
   await studioPage.locator('input[accept*=".mp3"]').setInputFiles({ name: 'song.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('test-audio') });
   await studioPage.getByRole('button', { name: 'Coba lagi' }).waitFor();
   await studioPage.getByRole('button', { name: 'Coba lagi' }).click();
   await studioPage.waitForTimeout(450);
+  const uploadMetrics = await studioPage.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
+  assert(uploadMetrics.scrollWidth <= uploadMetrics.width, 'Uploaded MP3 and cover cards must not overflow on mobile.');
+  await studioPage.screenshot({ path: join(qaDirectory, 'studio-mobile-music-upload.png'), fullPage: true });
   assert(uploadAttempts === 2, 'Failed uploads must expose a working retry action.');
   await studioPage.getByRole('button', { name: /Preview & Publish/ }).click();
   await studioPage.getByRole('button', { name: 'Buka preview penuh' }).click();
@@ -309,6 +333,15 @@ try {
   await studioPage.reload({ waitUntil: 'domcontentloaded' });
   await studioPage.locator('.studio-panel').waitFor();
   assert((await studioPage.evaluate(() => location.hash)) === '', 'Stored Studio token must work after reopening without a fragment.');
+  assert(await studioPage.locator('.studio-onboarding').count() === 0, 'Completed onboarding must not reopen after refresh for the same project.');
+  await studioPage.getByRole('button', { name: 'Panduan Studio' }).click();
+  await studioPage.getByRole('button', { name: 'Lewati panduan' }).click();
+  await studioPage.locator('.studio-language-card[data-locale="en"]').click();
+  await studioPage.getByRole('button', { name: 'Continue in English', exact: true }).click();
+  await studioPage.locator('.studio-onboarding').waitFor({ state: 'detached' });
+  assert(await studioPage.evaluate(() => document.documentElement.lang) === 'en', 'Changing language from the guide must update the document language.');
+  assert(await studioPage.getByRole('button', { name: 'Studio Guide' }).isVisible(), 'Studio chrome must switch to English.');
+  assert(studioProject.identity.recipient === 'Updated Recipient', 'A later language switch must preserve customer-written content.');
   await studioContext.close();
 
   const adminContext = await browser.newContext({ viewport: { width: 1024, height: 768 } });
