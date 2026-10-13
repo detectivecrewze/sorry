@@ -16,7 +16,7 @@ import {
 } from '../project/schema';
 import { button, el, field, setBusy } from '../ui/dom';
 import { createStudioLivePreview, type StudioPreviewRequest } from './livePreview';
-import { LETTER_BODY_PRESETS, OPENING_SUBTITLE_PRESETS, type StudioCopyPreset } from './copyPresets';
+import { LETTER_BODY_PRESETS, OPENING_SUBTITLE_PRESETS, type StudioPreset } from './copyPresets';
 import { createStudioTranslator, studioText, type StudioMessageKey } from './localization';
 import { createMusicCatalog, type MusicCatalogController } from './musicCatalog';
 import { createStudioOnboarding } from './onboarding';
@@ -505,11 +505,11 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     return root;
   }
 
-  function createPresetRail(
+  function createPresetRail<TValue>(
     kind: 'subtitle' | 'letter',
-    presets: StudioCopyPreset[],
-    currentValue: () => string,
-    onApply: (value: string) => void,
+    presets: StudioPreset<TValue>[],
+    isActive: (preset: StudioPreset<TValue>) => boolean,
+    onApply: (preset: StudioPreset<TValue>) => void,
   ): HTMLElement {
     const root = el('div', 'copy-preset-rail');
     const copy = el('div', 'copy-preset-rail__copy');
@@ -518,21 +518,41 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       el('small', '', t(kind === 'subtitle' ? 'preset.subtitleHint' : 'preset.letterHint')),
     );
     const actions = el('div', 'copy-preset-rail__actions');
+    let armedPresetId: string | null = null;
+    let confirmTimer: number | undefined;
     const refresh = (): void => {
       actions.querySelectorAll<HTMLButtonElement>('button').forEach((node) => {
         const preset = presets.find((item) => item.id === node.dataset.preset);
-        const active = Boolean(preset && currentValue() === preset.value[project.locale]);
+        const active = Boolean(preset && isActive(preset));
+        const confirming = Boolean(preset && armedPresetId === preset.id);
+        const name = preset?.label[project.locale] ?? '';
+        const index = preset ? presets.indexOf(preset) + 1 : 0;
         node.classList.toggle('is-active', active);
+        node.classList.toggle('is-confirming', confirming);
         node.setAttribute('aria-pressed', String(active));
+        node.textContent = confirming ? t('preset.confirmButton') : `${index}. ${name}`;
+        node.setAttribute('aria-label', confirming
+          ? t('preset.confirmAria', { name })
+          : t('preset.applyAria', { name }));
       });
     };
-    presets.forEach((preset, index) => {
-      const name = preset.label[project.locale];
-      const choice = button(`${index + 1}. ${name}`, 'copy-preset-chip');
+    presets.forEach((preset) => {
+      const choice = button('', 'copy-preset-chip');
       choice.dataset.preset = preset.id;
-      choice.setAttribute('aria-label', t('preset.applyAria', { name }));
       choice.addEventListener('click', () => {
-        onApply(preset.value[project.locale]);
+        if (armedPresetId !== preset.id) {
+          armedPresetId = preset.id;
+          if (confirmTimer !== undefined) window.clearTimeout(confirmTimer);
+          confirmTimer = window.setTimeout(() => {
+            armedPresetId = null;
+            refresh();
+          }, 4_000);
+          refresh();
+          return;
+        }
+        if (confirmTimer !== undefined) window.clearTimeout(confirmTimer);
+        armedPresetId = null;
+        onApply(preset);
         refresh();
       });
       actions.append(choice);
@@ -551,20 +571,43 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const copy = el('div', 'locale-fill-rail__copy');
     copy.append(el('strong', '', t('preset.label')), el('small', '', t('preset.languageHint')));
     const actions = el('div', 'locale-fill-rail__actions');
+    let armedLocale: ProjectLocale | null = null;
+    let confirmTimer: number | undefined;
     const refresh = (): void => {
       actions.querySelectorAll<HTMLButtonElement>('button').forEach((node) => {
         const locale: ProjectLocale = node.dataset.locale === 'en' ? 'en' : 'id';
         const active = isActive(locale);
+        const confirming = armedLocale === locale;
+        const name = locale === 'id' ? t('preset.indonesian') : t('preset.english');
         node.classList.toggle('is-active', active);
+        node.classList.toggle('is-confirming', confirming);
         node.setAttribute('aria-pressed', String(active));
+        node.textContent = confirming ? t('preset.confirmButton') : name;
+        node.setAttribute('aria-label', confirming
+          ? t('preset.confirmAria', { name })
+          : t('preset.applyAria', { name }));
       });
     };
     (['id', 'en'] as ProjectLocale[]).forEach((locale) => {
-      const label = locale === 'id' ? t('preset.indonesian') : t('preset.english');
-      const choice = button(label, 'locale-fill-chip');
+      const choice = button('', 'locale-fill-chip');
       choice.dataset.locale = locale;
       choice.dataset.presetSection = section;
-      choice.addEventListener('click', () => { onApply(locale); refresh(); });
+      choice.addEventListener('click', () => {
+        if (armedLocale !== locale) {
+          armedLocale = locale;
+          if (confirmTimer !== undefined) window.clearTimeout(confirmTimer);
+          confirmTimer = window.setTimeout(() => {
+            armedLocale = null;
+            refresh();
+          }, 4_000);
+          refresh();
+          return;
+        }
+        if (confirmTimer !== undefined) window.clearTimeout(confirmTimer);
+        armedLocale = null;
+        onApply(locale);
+        refresh();
+      });
       actions.append(choice);
     });
     root.append(copy, actions);
@@ -661,8 +704,9 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const subtitlePresets = createPresetRail(
       'subtitle',
       OPENING_SUBTITLE_PRESETS,
-      () => project.intro.subtitle,
-      (value) => {
+      (preset) => project.intro.subtitle === preset.value[project.locale],
+      (preset) => {
+        const value = preset.value[project.locale];
         subtitle.value = value;
         project.intro.subtitle = value;
         changed();
@@ -793,10 +837,20 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const letterPresets = createPresetRail(
       'letter',
       LETTER_BODY_PRESETS,
-      () => formatLetterText(project.letter.paragraphs),
-      (value) => {
-        paragraphs.value = value;
-        project.letter.paragraphs = parseLetterText(value);
+      (preset) => {
+        const value = preset.value[project.locale];
+        return project.letter.heading === value.heading
+          && formatLetterText(project.letter.paragraphs) === value.body
+          && project.letter.signoff === value.signoff;
+      },
+      (preset) => {
+        const value = preset.value[project.locale];
+        heading.value = value.heading;
+        paragraphs.value = value.body;
+        signoff.value = value.signoff;
+        project.letter.heading = value.heading;
+        project.letter.paragraphs = parseLetterText(value.body);
+        project.letter.signoff = value.signoff;
         letterPreviewScene = 'letter';
         changed();
       },

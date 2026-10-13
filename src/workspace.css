@@ -176,6 +176,8 @@ body.workspace-page {
 .locale-fill-chip:hover,
 .copy-preset-chip.is-active,
 .locale-fill-chip.is-active { color: #fff; border-color: var(--workspace-accent); background: var(--workspace-accent); }
+.copy-preset-chip.is-confirming,
+.locale-fill-chip.is-confirming { color: #fff; border-color: #7d1d2a; background: #7d1d2a; box-shadow: 0 0 0 3px rgba(125, 29, 42, 0.12); }
 .form-subheading { margin: 2.2rem 0 0.8rem; font-size: 1rem; }
 .form-subheading-copy { margin: -0.45rem 0 0.8rem; color: var(--workspace-muted); font-size: 0.82rem; line-height: 1.55; }
 .form-error { color: #a31629; font-weight: 700; }

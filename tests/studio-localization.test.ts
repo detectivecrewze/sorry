@@ -13,15 +13,21 @@ describe('Studio localization', () => {
     expect(studioText('en', 'step.progress', { current: 3 })).toBe('Step 3 of 5');
   });
 
-  it('provides three editable opening and letter presets in both languages', () => {
+  it('provides three editable opening and complete-letter presets in both languages', () => {
     expect(OPENING_SUBTITLE_PRESETS).toHaveLength(3);
     expect(LETTER_BODY_PRESETS).toHaveLength(3);
-    for (const presets of [OPENING_SUBTITLE_PRESETS, LETTER_BODY_PRESETS]) {
-      for (const preset of presets) {
-        expect(preset.value.id.length).toBeGreaterThan(30);
-        expect(preset.value.en.length).toBeGreaterThan(30);
-        expect(preset.value.id).not.toBe(preset.value.en);
+    for (const preset of OPENING_SUBTITLE_PRESETS) {
+      expect(preset.value.id.length).toBeGreaterThan(30);
+      expect(preset.value.en.length).toBeGreaterThan(30);
+      expect(preset.value.id).not.toBe(preset.value.en);
+    }
+    for (const preset of LETTER_BODY_PRESETS) {
+      for (const locale of ['id', 'en'] as const) {
+        expect(preset.value[locale].heading.length).toBeGreaterThan(5);
+        expect(preset.value[locale].body.length).toBeGreaterThan(30);
+        expect(preset.value[locale].signoff.length).toBeGreaterThan(5);
       }
+      expect(preset.value.id).not.toEqual(preset.value.en);
     }
   });
 });

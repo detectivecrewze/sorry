@@ -252,8 +252,12 @@ try {
   assert(await studioPage.evaluate((id) => localStorage.getItem(`sorry-letter:studio-token:${id}`), dynamicId) === 'test-token', 'Studio must persist the project-scoped token.');
   const languageSelect = studioPage.getByLabel('Bahasa Studio dan gift');
   assert(await languageSelect.inputValue() === 'id', 'Studio language must default to Bahasa Indonesia.');
-  await studioPage.locator('.copy-preset-chip[data-preset="gentle"]').click();
-  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()).includes('Tidak semua kata'), 'Opening subtitle preset must fill an editable localized value.');
+  const openingSubtitleBeforePreset = await studioPage.getByLabel('Subtitle pembuka').inputValue();
+  const gentleOpeningPreset = studioPage.locator('.copy-preset-chip[data-preset="gentle"]');
+  await gentleOpeningPreset.click();
+  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()) === openingSubtitleBeforePreset, 'The first preset click must only request confirmation.');
+  await gentleOpeningPreset.click();
+  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()).includes('Tidak semua kata'), 'The second preset click must fill an editable localized value.');
   assert(!(await studioPage.locator('.form-field__hint').allTextContents()).join(' ').includes('Dear'), 'Recipient helper text must not promise an injected greeting.');
   const recipientInput = studioPage.getByLabel(/Nama penerima/);
   await recipientInput.fill('Updated Recipient');
@@ -274,10 +278,20 @@ try {
   assert(studioMetrics.scrollWidth <= studioMetrics.width, 'Studio must not overflow horizontally on mobile.');
   await studioPage.screenshot({ path: join(qaDirectory, 'studio-mobile-style.png'), fullPage: true });
   await studioPage.getByRole('button', { name: /Surat & Jawaban/ }).click();
-  await studioPage.locator('.copy-preset-chip[data-preset="simple"]').click();
-  assert((await studioPage.getByLabel('Isi surat').inputValue()).includes('Aku minta maaf'), 'Letter body preset must fill the selected localized draft.');
-  await studioPage.locator('.locale-fill-chip[data-preset-section="question"][data-locale="en"]').click();
-  assert((await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue()).includes('Will you forgive me'), 'Question quick fill must support English without changing the Studio locale.');
+  const simpleLetterPreset = studioPage.locator('.copy-preset-chip[data-preset="simple"]');
+  const letterBodyBeforePreset = await studioPage.getByLabel('Isi surat').inputValue();
+  await simpleLetterPreset.click();
+  assert((await studioPage.getByLabel('Isi surat').inputValue()) === letterBodyBeforePreset, 'The first letter preset click must preserve all current copy.');
+  await simpleLetterPreset.click();
+  assert((await studioPage.getByLabel('Judul surat').inputValue()) === 'Maafkan Aku...', 'A letter preset must update the letter title.');
+  assert((await studioPage.getByLabel('Isi surat').inputValue()).includes('Aku minta maaf'), 'A letter preset must update the letter body.');
+  assert((await studioPage.getByLabel('Penutup surat').inputValue()) === 'Dengan tulus dan penuh sayang', 'A letter preset must update the signoff.');
+  const englishQuestionPreset = studioPage.locator('.locale-fill-chip[data-preset-section="question"][data-locale="en"]');
+  const questionBeforePreset = await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue();
+  await englishQuestionPreset.click();
+  assert((await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue()) === questionBeforePreset, 'The first language quick-fill click must only request confirmation.');
+  await englishQuestionPreset.click();
+  assert((await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue()).includes('Will you forgive me'), 'The second language quick-fill click must support English without changing the Studio locale.');
   await studioPage.getByRole('button', { name: 'Lihat live preview', exact: true }).click();
   const previewScenes = [
     ['Surat', 'letter'],
