@@ -144,6 +144,7 @@ const TRASH_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="no
 const CHECK_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -1px; margin-right: 3px;"><polyline points="20 6 9 17 4 12"/></svg>';
 const CLOSE_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 const INFO_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+const PRESET_DOCUMENT_SVG = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>';
 const ALERT_TRIANGLE_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
 interface TwoStepDeleteConfig {
@@ -293,6 +294,81 @@ function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
   document.body.classList.add('has-modal');
 }
 
+interface PresetConfirmConfig {
+  t: ReturnType<typeof createStudioTranslator>;
+  name: string;
+  scopes: string[];
+  onConfirm: () => void;
+}
+
+function openPresetConfirmModal(config: PresetConfirmConfig): void {
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const backdrop = el('div', 'preset-confirm-modal');
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-label', config.t('preset.modalAria', { name: config.name }));
+
+  const card = el('div', 'preset-confirm-modal__card');
+  const icon = el('div', 'preset-confirm-modal__icon');
+  icon.innerHTML = PRESET_DOCUMENT_SVG;
+  const kicker = el('p', 'preset-confirm-modal__kicker', config.t('preset.modalKicker'));
+  const title = el('h3', 'preset-confirm-modal__title', config.t('preset.modalTitle', { name: config.name }));
+  const description = el('p', 'preset-confirm-modal__copy', config.t('preset.modalCopy'));
+  const scopeList = el('div', 'preset-confirm-modal__scopes');
+  config.scopes.forEach((scope) => {
+    const item = el('span', 'preset-confirm-modal__scope');
+    item.innerHTML = CHECK_ICON_SVG;
+    item.append(document.createTextNode(scope));
+    scopeList.append(item);
+  });
+  const note = el('p', 'preset-confirm-modal__note', config.t('preset.modalNote'));
+  const actions = el('div', 'preset-confirm-modal__actions');
+  const cancelButton = button(config.t('common.cancel'), 'ui-button ui-button--secondary');
+  const confirmButton = button(config.t('preset.modalConfirm'), 'ui-button ui-button--primary');
+  actions.append(cancelButton, confirmButton);
+  card.append(icon, kicker, title, description, scopeList, note, actions);
+  backdrop.append(card);
+
+  const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const close = (): void => {
+    window.removeEventListener('keydown', onKeyDown);
+    backdrop.remove();
+    document.body.classList.remove('has-modal');
+    previousFocus?.focus();
+  };
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(card.querySelectorAll<HTMLElement>(focusableSelector));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  cancelButton.addEventListener('click', close);
+  confirmButton.addEventListener('click', () => {
+    close();
+    config.onConfirm();
+  });
+  backdrop.addEventListener('mousedown', (event) => {
+    if (event.target === backdrop) close();
+  });
+  window.addEventListener('keydown', onKeyDown);
+  document.body.append(backdrop);
+  document.body.classList.add('has-modal');
+  window.requestAnimationFrame(() => confirmButton.focus());
+}
 function renderScannableLoveBarcode(
   canvas: HTMLCanvasElement,
   url: string,
@@ -518,42 +594,32 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       el('small', '', t(kind === 'subtitle' ? 'preset.subtitleHint' : 'preset.letterHint')),
     );
     const actions = el('div', 'copy-preset-rail__actions');
-    let armedPresetId: string | null = null;
-    let confirmTimer: number | undefined;
     const refresh = (): void => {
       actions.querySelectorAll<HTMLButtonElement>('button').forEach((node) => {
         const preset = presets.find((item) => item.id === node.dataset.preset);
         const active = Boolean(preset && isActive(preset));
-        const confirming = Boolean(preset && armedPresetId === preset.id);
-        const name = preset?.label[project.locale] ?? '';
-        const index = preset ? presets.indexOf(preset) + 1 : 0;
         node.classList.toggle('is-active', active);
-        node.classList.toggle('is-confirming', confirming);
         node.setAttribute('aria-pressed', String(active));
-        node.textContent = confirming ? t('preset.confirmButton') : `${index}. ${name}`;
-        node.setAttribute('aria-label', confirming
-          ? t('preset.confirmAria', { name })
-          : t('preset.applyAria', { name }));
       });
     };
-    presets.forEach((preset) => {
-      const choice = button('', 'copy-preset-chip');
+    presets.forEach((preset, index) => {
+      const name = preset.label[project.locale];
+      const choice = button(`${index + 1}. ${name}`, 'copy-preset-chip');
       choice.dataset.preset = preset.id;
+      choice.setAttribute('aria-label', t('preset.applyAria', { name }));
       choice.addEventListener('click', () => {
-        if (armedPresetId !== preset.id) {
-          armedPresetId = preset.id;
-          if (confirmTimer !== undefined) window.clearTimeout(confirmTimer);
-          confirmTimer = window.setTimeout(() => {
-            armedPresetId = null;
+        const scopes = kind === 'letter'
+          ? [t('preset.scopeHeading'), t('preset.scopeBody'), t('preset.scopeSignoff')]
+          : [t('preset.scopeSubtitle')];
+        openPresetConfirmModal({
+          t,
+          name,
+          scopes,
+          onConfirm: () => {
+            onApply(preset);
             refresh();
-          }, 4_000);
-          refresh();
-          return;
-        }
-        if (confirmTimer !== undefined) window.clearTimeout(confirmTimer);
-        armedPresetId = null;
-        onApply(preset);
-        refresh();
+          },
+        });
       });
       actions.append(choice);
     });
@@ -571,42 +637,36 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const copy = el('div', 'locale-fill-rail__copy');
     copy.append(el('strong', '', t('preset.label')), el('small', '', t('preset.languageHint')));
     const actions = el('div', 'locale-fill-rail__actions');
-    let armedLocale: ProjectLocale | null = null;
-    let confirmTimer: number | undefined;
+    const sectionScope = {
+      question: t('preset.scopeQuestion'),
+      accepted: t('preset.scopeAccepted'),
+      needTime: t('preset.scopeNeedTime'),
+      promise: t('preset.scopePromise'),
+    }[section];
     const refresh = (): void => {
       actions.querySelectorAll<HTMLButtonElement>('button').forEach((node) => {
         const locale: ProjectLocale = node.dataset.locale === 'en' ? 'en' : 'id';
         const active = isActive(locale);
-        const confirming = armedLocale === locale;
-        const name = locale === 'id' ? t('preset.indonesian') : t('preset.english');
         node.classList.toggle('is-active', active);
-        node.classList.toggle('is-confirming', confirming);
         node.setAttribute('aria-pressed', String(active));
-        node.textContent = confirming ? t('preset.confirmButton') : name;
-        node.setAttribute('aria-label', confirming
-          ? t('preset.confirmAria', { name })
-          : t('preset.applyAria', { name }));
       });
     };
     (['id', 'en'] as ProjectLocale[]).forEach((locale) => {
-      const choice = button('', 'locale-fill-chip');
+      const name = locale === 'id' ? t('preset.indonesian') : t('preset.english');
+      const choice = button(name, 'locale-fill-chip');
       choice.dataset.locale = locale;
       choice.dataset.presetSection = section;
+      choice.setAttribute('aria-label', t('preset.applyAria', { name }));
       choice.addEventListener('click', () => {
-        if (armedLocale !== locale) {
-          armedLocale = locale;
-          if (confirmTimer !== undefined) window.clearTimeout(confirmTimer);
-          confirmTimer = window.setTimeout(() => {
-            armedLocale = null;
+        openPresetConfirmModal({
+          t,
+          name,
+          scopes: [sectionScope],
+          onConfirm: () => {
+            onApply(locale);
             refresh();
-          }, 4_000);
-          refresh();
-          return;
-        }
-        if (confirmTimer !== undefined) window.clearTimeout(confirmTimer);
-        armedLocale = null;
-        onApply(locale);
-        refresh();
+          },
+        });
       });
       actions.append(choice);
     });

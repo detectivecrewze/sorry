@@ -255,9 +255,15 @@ try {
   const openingSubtitleBeforePreset = await studioPage.getByLabel('Subtitle pembuka').inputValue();
   const gentleOpeningPreset = studioPage.locator('.copy-preset-chip[data-preset="gentle"]');
   await gentleOpeningPreset.click();
-  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()) === openingSubtitleBeforePreset, 'The first preset click must only request confirmation.');
+  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()) === openingSubtitleBeforePreset, 'Opening a preset confirmation must preserve the current copy.');
+  const presetModalBox = await studioPage.locator('.preset-confirm-modal__card').boundingBox();
+  assert(Boolean(presetModalBox && Math.abs((presetModalBox.y + presetModalBox.height / 2) - 422) < 30), 'Preset confirmation must be centered in the mobile viewport.');
+  await studioPage.screenshot({ path: join(qaDirectory, 'studio-mobile-preset-confirm.png') });
+  await studioPage.getByRole('button', { name: 'Batal', exact: true }).click();
+  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()) === openingSubtitleBeforePreset, 'Cancelling a preset must not change the current copy.');
   await gentleOpeningPreset.click();
-  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()).includes('Tidak semua kata'), 'The second preset click must fill an editable localized value.');
+  await studioPage.getByRole('button', { name: 'Terapkan Preset', exact: true }).click();
+  assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()).includes('Tidak semua kata'), 'Confirming the modal must fill an editable localized value.');
   assert(!(await studioPage.locator('.form-field__hint').allTextContents()).join(' ').includes('Dear'), 'Recipient helper text must not promise an injected greeting.');
   const recipientInput = studioPage.getByLabel(/Nama penerima/);
   await recipientInput.fill('Updated Recipient');
@@ -281,17 +287,18 @@ try {
   const simpleLetterPreset = studioPage.locator('.copy-preset-chip[data-preset="simple"]');
   const letterBodyBeforePreset = await studioPage.getByLabel('Isi surat').inputValue();
   await simpleLetterPreset.click();
-  assert((await studioPage.getByLabel('Isi surat').inputValue()) === letterBodyBeforePreset, 'The first letter preset click must preserve all current copy.');
-  await simpleLetterPreset.click();
+  assert((await studioPage.getByLabel('Isi surat').inputValue()) === letterBodyBeforePreset, 'Opening the letter preset modal must preserve all current copy.');
+  assert(await studioPage.locator('.preset-confirm-modal__scope').count() === 3, 'Letter preset confirmation must list title, body, and signoff.');
+  await studioPage.getByRole('button', { name: 'Terapkan Preset', exact: true }).click();
   assert((await studioPage.getByLabel('Judul surat').inputValue()) === 'Maafkan Aku...', 'A letter preset must update the letter title.');
   assert((await studioPage.getByLabel('Isi surat').inputValue()).includes('Aku minta maaf'), 'A letter preset must update the letter body.');
   assert((await studioPage.getByLabel('Penutup surat').inputValue()) === 'Dengan tulus dan penuh sayang', 'A letter preset must update the signoff.');
   const englishQuestionPreset = studioPage.locator('.locale-fill-chip[data-preset-section="question"][data-locale="en"]');
   const questionBeforePreset = await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue();
   await englishQuestionPreset.click();
-  assert((await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue()) === questionBeforePreset, 'The first language quick-fill click must only request confirmation.');
-  await englishQuestionPreset.click();
-  assert((await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue()).includes('Will you forgive me'), 'The second language quick-fill click must support English without changing the Studio locale.');
+  assert((await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue()) === questionBeforePreset, 'Opening a language quick-fill modal must preserve the current copy.');
+  await studioPage.getByRole('button', { name: 'Terapkan Preset', exact: true }).click();
+  assert((await studioPage.locator('.letter-group-card').nth(1).locator('input').first().inputValue()).includes('Will you forgive me'), 'Confirming a language quick-fill must support English without changing the Studio locale.');
   await studioPage.getByRole('button', { name: 'Lihat live preview', exact: true }).click();
   const previewScenes = [
     ['Surat', 'letter'],
