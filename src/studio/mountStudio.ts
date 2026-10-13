@@ -3,6 +3,7 @@ import { ApiError, getStudioProject, saveStudioProject, uploadMedia } from '../a
 import { forgetStudioToken, resolveStudioToken } from '../api/studio-token';
 import { MASCOTS } from '../project/mascots';
 import { PALETTES } from '../project/palettes';
+import { applyInitialLocalePreset, PROJECT_CONTENT_PRESETS } from '../project/presets';
 import type { SceneId } from '../state/machine';
 import {
   formatLetterText,
@@ -15,18 +16,15 @@ import {
 } from '../project/schema';
 import { button, el, field, setBusy } from '../ui/dom';
 import { createStudioLivePreview, type StudioPreviewRequest } from './livePreview';
+import { LETTER_BODY_PRESETS, OPENING_SUBTITLE_PRESETS, type StudioPreset } from './copyPresets';
+import { createStudioTranslator, studioText, type StudioMessageKey } from './localization';
 import { createMusicCatalog, type MusicCatalogController } from './musicCatalog';
+import { createStudioOnboarding } from './onboarding';
 import type { PlaylistTrack } from './playlist';
 
 type StudioStatus = 'idle' | 'saving' | 'saved' | 'error' | 'published' | 'unpublished' | 'dirty';
 
-const steps = [
-  ['Identitas & Intro', 'Nama dan pembuka'],
-  ['Gaya', 'Maskot dan warna'],
-  ['Surat & Jawaban', 'Isi utama gift'],
-  ['Musik', 'Lagu dan thumbnail'],
-  ['Preview & Publish', 'Periksa lalu terbitkan'],
-] as const;
+const STEP_COUNT = 5;
 
 const STUDIO_EXAMPLES: Record<ProjectLocale, {
   recipient: string;
@@ -111,9 +109,17 @@ function sectionHeader(kicker: string, title: string, copy: string): HTMLElement
   return root;
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
-  return error instanceof Error ? error.message : 'Terjadi kesalahan. Silakan coba lagi.';
+function errorMessage(error: unknown, fallback = 'Terjadi kesalahan. Silakan coba lagi.', translate?: ReturnType<typeof createStudioTranslator>): string {
+  if (error instanceof ApiError) {
+    if (translate) {
+      if (error.status === 401 || error.status === 403) return translate('error.unauthorized');
+      if (error.status === 404) return translate('error.notFound');
+      if (error.status === 0) return translate('error.network');
+      if (error.status >= 500) return translate('error.server');
+    }
+    return error.message || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
 }
 
 function formatTime(value: number): string {
@@ -138,9 +144,11 @@ const TRASH_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="no
 const CHECK_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -1px; margin-right: 3px;"><polyline points="20 6 9 17 4 12"/></svg>';
 const CLOSE_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 const INFO_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+const PRESET_DOCUMENT_SVG = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>';
 const ALERT_TRIANGLE_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
 interface TwoStepDeleteConfig {
+  t: ReturnType<typeof createStudioTranslator>;
   category: string;
   title: string;
   subtitle?: string;
@@ -150,10 +158,11 @@ interface TwoStepDeleteConfig {
 }
 
 function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
+  const t = config.t;
   const backdrop = el('div', 'two-step-modal__backdrop');
   backdrop.setAttribute('role', 'dialog');
   backdrop.setAttribute('aria-modal', 'true');
-  backdrop.setAttribute('aria-label', `Konfirmasi Hapus ${config.category}`);
+  backdrop.setAttribute('aria-label', t('delete.dialogAria', { category: config.category }));
 
   const card = el('div', 'two-step-modal__card');
   let currentStep: 1 | 2 = 1;
@@ -181,7 +190,7 @@ function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
     const badge = el(
       'span',
       `two-step-stepper__badge${currentStep === 2 ? ' is-danger' : ''}`,
-      currentStep === 1 ? 'Langkah 1 dari 2 — Konfirmasi Awal' : 'Langkah 2 dari 2 — Verifikasi Akhir',
+      currentStep === 1 ? t('delete.stepOne') : t('delete.stepTwo'),
     );
     const dots = el('div', 'two-step-stepper__dots');
     const dot1 = el('span', `two-step-dot${currentStep >= 1 ? ' is-active' : ''}${currentStep === 2 ? ' is-done' : ''}`);
@@ -196,14 +205,14 @@ function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
 
     const closeBtn = button('', 'two-step-modal__close-btn');
     closeBtn.innerHTML = CLOSE_ICON_SVG;
-    closeBtn.setAttribute('aria-label', 'Tutup dialog konfirmasi');
+    closeBtn.setAttribute('aria-label', t('delete.closeAria'));
     closeBtn.addEventListener('click', close);
     head.append(stepper, closeBtn);
 
     const content = el('div', 'two-step-modal__content');
 
     if (currentStep === 1) {
-      const h3 = el('h3', 'two-step-modal__title', `Hapus ${config.category}?`);
+      const h3 = el('h3', 'two-step-modal__title', t('delete.title', { category: config.category }));
 
       const itemCard = el('div', 'two-step-item-card');
       if (config.previewKind === 'image' && config.previewUrl) {
@@ -221,21 +230,21 @@ function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
       const itemInfo = el('div', 'two-step-item-card__info');
       itemInfo.append(
         el('strong', '', config.title || config.category),
-        el('span', '', config.subtitle || 'Terpasang di kado'),
+        el('span', '', config.subtitle || t('delete.attached')),
       );
       itemCard.append(itemInfo);
 
       const msg = el(
         'p',
         'two-step-modal__desc',
-        `Apakah kamu yakin ingin melepas ${config.category.toLowerCase()} ini dari surat? File ini tidak akan dimainkan atau ditampilkan lagi di kado pasanganmu.`,
+        t('delete.description', { category: config.category.toLowerCase() }),
       );
 
       const actions = el('div', 'two-step-modal__actions');
-      const cancelBtn = button('Batal', 'ui-button ui-button--secondary');
+      const cancelBtn = button(t('common.cancel'), 'ui-button ui-button--secondary');
       cancelBtn.addEventListener('click', close);
 
-      const nextBtn = button('Lanjut Hapus →', 'ui-button ui-button--danger');
+      const nextBtn = button(t('delete.continue'), 'ui-button ui-button--danger');
       nextBtn.addEventListener('click', () => {
         currentStep = 2;
         renderModalStep();
@@ -244,29 +253,29 @@ function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
       actions.append(cancelBtn, nextBtn);
       content.append(h3, itemCard, msg, actions);
     } else {
-      const h3 = el('h3', 'two-step-modal__title two-step-modal__title--danger', 'Konfirmasi Terakhir: Hapus Permanen?');
+      const h3 = el('h3', 'two-step-modal__title two-step-modal__title--danger', t('delete.finalTitle'));
 
       const warningCallout = el('div', 'two-step-warning-callout');
       const warnIcon = el('span', 'two-step-warning-icon');
       warnIcon.innerHTML = ALERT_TRIANGLE_SVG;
       const warnText = el('div', 'two-step-warning-text');
       warnText.append(
-        el('strong', '', 'Peringatan: Tindakan ini permanen!'),
-        el('p', '', `File "${config.title || config.category}" akan langsung dilepas dari surat kado. Kamu harus mengunggah atau memilih lagu ulang jika berubah pikiran.`),
+        el('strong', '', t('delete.warningTitle')),
+        el('p', '', t('delete.warningCopy', { title: config.title || config.category })),
       );
       warningCallout.append(warnIcon, warnText);
 
-      const finalPrompt = el('p', 'two-step-modal__desc', 'Klik tombol di bawah jika kamu sudah benar-benar yakin untuk menghapusnya.');
+      const finalPrompt = el('p', 'two-step-modal__desc', t('delete.finalPrompt'));
 
       const actions = el('div', 'two-step-modal__actions');
-      const backBtn = button('← Kembali', 'ui-button ui-button--secondary');
+      const backBtn = button(t('common.back'), 'ui-button ui-button--secondary');
       backBtn.addEventListener('click', () => {
         currentStep = 1;
         renderModalStep();
       });
 
       const confirmBtn = button('', 'ui-button ui-button--danger');
-      confirmBtn.innerHTML = `${TRASH_ICON_SVG}<span>Ya, Hapus Sekarang</span>`;
+      confirmBtn.innerHTML = `${TRASH_ICON_SVG}<span>${t('delete.confirm')}</span>`;
       confirmBtn.addEventListener('click', () => {
         close();
         config.onConfirm();
@@ -285,6 +294,102 @@ function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
   document.body.classList.add('has-modal');
 }
 
+interface PresetChangePreview {
+  label: string;
+  before: string;
+  after: string;
+}
+
+interface PresetConfirmConfig {
+  t: ReturnType<typeof createStudioTranslator>;
+  name: string;
+  changes: PresetChangePreview[];
+  onConfirm: () => void;
+}
+
+function openPresetConfirmModal(config: PresetConfirmConfig): void {
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const backdrop = el('div', 'preset-confirm-modal');
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-label', config.t('preset.modalAria', { name: config.name }));
+
+  const card = el('div', 'preset-confirm-modal__card');
+  card.tabIndex = -1;
+  const icon = el('div', 'preset-confirm-modal__icon');
+  icon.innerHTML = PRESET_DOCUMENT_SVG;
+  const kicker = el('p', 'preset-confirm-modal__kicker', config.t('preset.modalKicker'));
+  const title = el('h3', 'preset-confirm-modal__title', config.t('preset.modalTitle', { name: config.name }));
+  const description = el('p', 'preset-confirm-modal__copy', config.t('preset.modalCopy'));
+  const comparison = el('div', 'preset-confirm-modal__comparison');
+  config.changes.forEach((change) => {
+    const row = el('section', 'preset-confirm-modal__change');
+    row.append(el('h4', 'preset-confirm-modal__field-name', change.label));
+    const values = el('div', 'preset-confirm-modal__values');
+    const before = el('div', 'preset-confirm-modal__value preset-confirm-modal__value--before');
+    before.append(
+      el('span', 'preset-confirm-modal__value-label', config.t('preset.currentValue')),
+      el('p', '', change.before.trim() || config.t('preset.emptyValue')),
+    );
+    const arrow = el('span', 'preset-confirm-modal__arrow');
+    arrow.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>';
+    const after = el('div', 'preset-confirm-modal__value preset-confirm-modal__value--after');
+    after.append(
+      el('span', 'preset-confirm-modal__value-label', config.t('preset.afterValue')),
+      el('p', '', change.after.trim() || config.t('preset.emptyValue')),
+    );
+    values.append(before, arrow, after);
+    row.append(values);
+    comparison.append(row);
+  });
+  const note = el('p', 'preset-confirm-modal__note', config.t('preset.modalNote'));
+  const actions = el('div', 'preset-confirm-modal__actions');
+  const cancelButton = button(config.t('common.cancel'), 'ui-button ui-button--secondary');
+  const confirmButton = button(config.t('preset.modalConfirm'), 'ui-button ui-button--primary');
+  actions.append(cancelButton, confirmButton);
+  card.append(icon, kicker, title, description, comparison, note, actions);
+  backdrop.append(card);
+
+  const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const close = (): void => {
+    window.removeEventListener('keydown', onKeyDown);
+    backdrop.remove();
+    document.body.classList.remove('has-modal');
+    previousFocus?.focus();
+  };
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(card.querySelectorAll<HTMLElement>(focusableSelector));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  cancelButton.addEventListener('click', close);
+  confirmButton.addEventListener('click', () => {
+    close();
+    config.onConfirm();
+  });
+  backdrop.addEventListener('mousedown', (event) => {
+    if (event.target === backdrop) close();
+  });
+  window.addEventListener('keydown', onKeyDown);
+  document.body.append(backdrop);
+  document.body.classList.add('has-modal');
+  window.requestAnimationFrame(() => card.focus({ preventScroll: true }));
+}
 function renderScannableLoveBarcode(
   canvas: HTMLCanvasElement,
   url: string,
@@ -348,16 +453,18 @@ function renderScannableLoveBarcode(
 }
 
 export async function mountStudio(target: HTMLElement, projectId: string): Promise<() => void> {
+  const browserLocale: ProjectLocale = navigator.language.toLowerCase().startsWith('id') ? 'id' : 'en';
+  const beforeProjectText = (key: StudioMessageKey): string => studioText(browserLocale, key);
   const token = resolveStudioToken(projectId);
   if (!token) {
     const missing = el('main', 'access-state');
-    missing.append(el('span', 'eyebrow', 'Studio link'), el('h1', '', 'Magic link belum tersimpan'), el('p', '', 'Buka kembali link Studio lengkap yang diberikan admin. Setelah terbuka sekali, Safari akan menyimpannya untuk kunjungan berikutnya.'));
+    missing.append(el('span', 'eyebrow', beforeProjectText('access.kicker')), el('h1', '', beforeProjectText('access.missingTitle')), el('p', '', beforeProjectText('access.missingCopy')));
     target.replaceChildren(missing);
     return () => target.replaceChildren();
   }
 
   const loading = el('main', 'access-state');
-  loading.append(el('div', 'loading-mark'), el('h1', '', 'Membuka Studio…'), el('p', '', 'Menyiapkan surat dan preview kamu.'));
+  loading.append(el('div', 'loading-mark'), el('h1', '', beforeProjectText('access.loadingTitle')), el('p', '', beforeProjectText('access.loadingCopy')));
   target.replaceChildren(loading);
 
   let project: SorryGiftProjectV1;
@@ -366,15 +473,18 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     project.locale = project.locale === 'en' ? 'en' : 'id';
   } catch (error) {
     const invalid = el('main', 'access-state');
-    invalid.append(el('span', 'eyebrow', 'Studio link'), el('h1', '', 'Studio tidak dapat dibuka'), el('p', '', errorMessage(error)));
+    invalid.append(el('span', 'eyebrow', beforeProjectText('access.kicker')), el('h1', '', beforeProjectText('access.failedTitle')), el('p', '', errorMessage(error, beforeProjectText('error.generic'), (key, variables) => studioText(browserLocale, key, variables))));
     if (error instanceof ApiError && error.status === 401) {
-      const reset = button('Hapus token tersimpan', 'ui-button ui-button--secondary');
+      const reset = button(beforeProjectText('access.forgetToken'), 'ui-button ui-button--secondary');
       reset.addEventListener('click', () => { forgetStudioToken(projectId); window.location.reload(); });
       invalid.append(reset);
     }
     target.replaceChildren(invalid);
     return () => target.replaceChildren();
   }
+
+  document.documentElement.lang = project.locale;
+  const t = createStudioTranslator(() => project.locale);
 
   let activeStep = 0;
   let status: StudioStatus = project.publishedAt
@@ -387,6 +497,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   let musicCatalog: MusicCatalogController | null = null;
   let letterPreviewScene: SceneId = 'letter';
   let previewTrackIndex = 0;
+  let toolFieldSequence = 0;
   let studioTitleObserver: ResizeObserver | null = null;
   const audio = new Audio(project.music.audioUrl);
   audio.preload = 'metadata';
@@ -394,13 +505,18 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   const shell = el('main', 'studio-shell');
   const header = el('header', 'studio-header');
   const brand = el('div', 'studio-brand');
-  brand.append(el('span', 'eyebrow', 'Sorry Letter Studio'), el('strong', '', project.identity.recipient || 'Project baru'));
+  brand.append(el('span', 'eyebrow', t('header.eyebrow')), el('strong', '', project.identity.recipient || t('header.newProject')));
   const statusPill = el('span', 'status-pill');
-  header.append(brand, statusPill);
+  const headerActions = el('div', 'studio-header__actions');
+  const guideButton = button('', 'studio-guide-button');
+  guideButton.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.6 2.1c-.9.5-1.4 1.1-1.4 2.2"/><path d="M12 17h.01"/></svg><span></span>';
+  guideButton.querySelector('span')!.textContent = t('header.guide');
+  headerActions.append(guideButton, statusPill);
+  header.append(brand, headerActions);
 
   const body = el('div', 'studio-layout');
   const nav = el('nav', 'studio-steps');
-  nav.setAttribute('aria-label', 'Langkah Studio');
+  nav.setAttribute('aria-label', t('header.stepsAria'));
   const panel = el('section', 'studio-panel');
   body.append(nav, panel);
   shell.append(header, body, audio);
@@ -414,6 +530,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   const livePreview = createStudioLivePreview({
     getProject: () => project,
     beforeOpen: stopStudioAudio,
+    t,
   });
 
   function appendSectionHeader(
@@ -424,7 +541,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   ): void {
     const heading = sectionHeader(kicker, title, copy);
     if (request) {
-      const preview = button('Lihat live preview', 'ui-button ui-button--secondary live-preview-trigger');
+      const preview = button(t('common.preview'), 'ui-button ui-button--secondary live-preview-trigger');
       preview.addEventListener('click', () => livePreview.open(request(), preview));
       heading.append(preview);
     }
@@ -434,9 +551,9 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   function setStatus(next: StudioStatus, detail = ''): void {
     status = next;
     const labels: Record<StudioStatus, string> = {
-      idle: 'Siap', saving: 'Menyimpan…', saved: 'Tersimpan', error: detail || 'Gagal menyimpan',
-      published: 'Sudah dipublikasikan', unpublished: 'Perubahan belum dipublish',
-      dirty: project.publishedAt ? 'Ada perubahan baru' : 'Belum dipublikasikan',
+      idle: t('status.idle'), saving: t('status.saving'), saved: t('status.saved'), error: detail || t('status.saveFailed'),
+      published: t('status.published'), unpublished: t('status.unpublished'),
+      dirty: project.publishedAt ? t('status.dirtyPublished') : t('status.dirtyDraft'),
     };
     statusPill.textContent = labels[next];
     statusPill.dataset.status = next;
@@ -454,7 +571,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       if (publish) renderStep();
     } catch (error) {
       if (sequence !== saveSequence) return;
-      setStatus('error', errorMessage(error));
+      setStatus('error', errorMessage(error, t('error.generic'), t));
       throw error;
     }
   }
@@ -464,7 +581,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     setStatus('dirty');
     window.clearTimeout(saveTimer);
     saveTimer = window.setTimeout(() => void save().catch(() => undefined), 700);
-    brand.querySelector('strong')!.textContent = project.identity.recipient || 'Project baru';
+    brand.querySelector('strong')!.textContent = project.identity.recipient || t('header.newProject');
   }
 
   function bind(input: HTMLInputElement | HTMLTextAreaElement, update: (value: string) => void, previewScene?: SceneId): void {
@@ -472,9 +589,113 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     if (previewScene) input.addEventListener('focus', () => { letterPreviewScene = previewScene; });
   }
 
+  function toolField(label: string, input: HTMLElement, hint: string, tools: HTMLElement): HTMLElement {
+    const root = el('div', 'form-field');
+    const labelNode = el('span', 'form-field__label', label);
+    const hintNode = el('small', 'form-field__hint', hint);
+    const sequence = ++toolFieldSequence;
+    labelNode.id = `studio-tool-field-label-${sequence}`;
+    hintNode.id = `studio-tool-field-hint-${sequence}`;
+    input.setAttribute('aria-labelledby', labelNode.id);
+    input.setAttribute('aria-describedby', hintNode.id);
+    root.append(labelNode, tools, input, hintNode);
+    return root;
+  }
+
+  function createPresetRail<TValue>(
+    kind: 'subtitle' | 'letter',
+    presets: StudioPreset<TValue>[],
+    isActive: (preset: StudioPreset<TValue>) => boolean,
+    getChanges: (preset: StudioPreset<TValue>) => PresetChangePreview[],
+    onApply: (preset: StudioPreset<TValue>) => void,
+  ): HTMLElement {
+    const root = el('div', 'copy-preset-rail');
+    const copy = el('div', 'copy-preset-rail__copy');
+    copy.append(
+      el('strong', '', t('preset.label')),
+      el('small', '', t(kind === 'subtitle' ? 'preset.subtitleHint' : 'preset.letterHint')),
+    );
+    const actions = el('div', 'copy-preset-rail__actions');
+    const refresh = (): void => {
+      actions.querySelectorAll<HTMLButtonElement>('button').forEach((node) => {
+        const preset = presets.find((item) => item.id === node.dataset.preset);
+        const active = Boolean(preset && isActive(preset));
+        node.classList.toggle('is-active', active);
+        node.setAttribute('aria-pressed', String(active));
+      });
+    };
+    presets.forEach((preset, index) => {
+      const name = preset.label[project.locale];
+      const choice = button(`${index + 1}. ${name}`, 'copy-preset-chip');
+      choice.dataset.preset = preset.id;
+      choice.setAttribute('aria-label', t('preset.applyAria', { name }));
+      choice.addEventListener('click', () => {
+        openPresetConfirmModal({
+          t,
+          name,
+          changes: getChanges(preset),
+          onConfirm: () => {
+            onApply(preset);
+            refresh();
+          },
+        });
+      });
+      actions.append(choice);
+    });
+    root.append(copy, actions);
+    refresh();
+    return root;
+  }
+
+  function createLocaleFillRail(
+    section: 'question' | 'accepted' | 'needTime' | 'promise',
+    isActive: (locale: ProjectLocale) => boolean,
+    getChanges: (locale: ProjectLocale) => PresetChangePreview[],
+    onApply: (locale: ProjectLocale) => void,
+  ): HTMLElement {
+    const root = el('div', 'locale-fill-rail');
+    const copy = el('div', 'locale-fill-rail__copy');
+    copy.append(el('strong', '', t('preset.label')), el('small', '', t('preset.languageHint')));
+    const actions = el('div', 'locale-fill-rail__actions');
+
+    const refresh = (): void => {
+      actions.querySelectorAll<HTMLButtonElement>('button').forEach((node) => {
+        const locale: ProjectLocale = node.dataset.locale === 'en' ? 'en' : 'id';
+        const active = isActive(locale);
+        node.classList.toggle('is-active', active);
+        node.setAttribute('aria-pressed', String(active));
+      });
+    };
+    (['id', 'en'] as ProjectLocale[]).forEach((locale) => {
+      const name = locale === 'id' ? t('preset.indonesian') : t('preset.english');
+      const choice = button(name, 'locale-fill-chip');
+      choice.dataset.locale = locale;
+      choice.dataset.presetSection = section;
+      choice.setAttribute('aria-label', t('preset.applyAria', { name }));
+      choice.addEventListener('click', () => {
+        openPresetConfirmModal({
+          t,
+          name,
+          changes: getChanges(locale),
+          onConfirm: () => {
+            onApply(locale);
+            refresh();
+          },
+        });
+      });
+      actions.append(choice);
+    });
+    root.append(copy, actions);
+    refresh();
+    return root;
+  }
+
   function renderNav(): void {
     nav.replaceChildren();
-    steps.forEach(([title, subtitle], index) => {
+    Array.from({ length: STEP_COUNT }, (_, index) => index).forEach((index) => {
+      const stepNumber = index + 1;
+      const title = t(`step.${stepNumber}.title` as StudioMessageKey);
+      const subtitle = t(`step.${stepNumber}.subtitle` as StudioMessageKey);
       const item = button('', 'step-button');
       item.classList.toggle('is-active', index === activeStep);
       item.setAttribute('aria-current', index === activeStep ? 'step' : 'false');
@@ -486,26 +707,26 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   }
 
   function renderIdentity(): void {
-    appendSectionHeader('Langkah 1 dari 5', 'Siapa yang menerima surat ini?', 'Isi nama orang yang akan membuka gift, nama kamu sebagai pengirim, dan kalimat pembukanya.', () => ({
-      title: 'Identitas & Intro',
-      description: 'Periksa bahasa tombol, pembuka gift, dan isi surat tanpa tambahan nama otomatis.',
+    appendSectionHeader(t('step.progress', { current: 1 }), t('identity.title'), t('identity.copy'), () => ({
+      title: t('step.1.title'),
+      description: t('identity.previewDescription'),
       initialScene: 'intro',
-      tabs: [{ label: 'Intro', scene: 'intro' }, { label: 'Surat', scene: 'letter' }],
+      tabs: [{ label: 'Intro', scene: 'intro' }, { label: t('letter.tabLetter'), scene: 'letter' }],
     }));
     const examples = STUDIO_EXAMPLES[project.locale];
     const grid = el('div', 'form-grid form-grid--two');
 
     const languageSwitcher = el('div', 'language-switcher');
-    const idBtn = button('Bahasa Indonesia', `language-pill${project.locale === 'id' ? ' is-active' : ''}`);
-    const enBtn = button('English', `language-pill${project.locale === 'en' ? ' is-active' : ''}`);
+    const idBtn = button(t('identity.indonesian'), `language-pill${project.locale === 'id' ? ' is-active' : ''}`);
+    const enBtn = button(t('identity.english'), `language-pill${project.locale === 'en' ? ' is-active' : ''}`);
     idBtn.setAttribute('aria-pressed', String(project.locale === 'id'));
     enBtn.setAttribute('aria-pressed', String(project.locale === 'en'));
 
     const language = el('select', 'language-switcher__select');
-    language.setAttribute('aria-label', 'Bahasa gift');
-    const indonesian = el('option', '', 'Bahasa Indonesia');
+    language.setAttribute('aria-label', t('identity.languageAria'));
+    const indonesian = el('option', '', t('identity.indonesian'));
     indonesian.value = 'id';
-    const english = el('option', '', 'English');
+    const english = el('option', '', t('identity.english'));
     english.value = 'en';
     language.append(indonesian, english);
     language.value = project.locale;
@@ -513,6 +734,10 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const setLocale = (nextLocale: ProjectLocale): void => {
       if (project.locale === nextLocale) return;
       project.locale = nextLocale;
+      document.documentElement.lang = nextLocale;
+      nav.setAttribute('aria-label', t('header.stepsAria'));
+      guideButton.querySelector('span')!.textContent = t('header.guide');
+      brand.querySelector('.eyebrow')!.textContent = t('header.eyebrow');
       language.value = nextLocale;
       changed();
       render();
@@ -525,6 +750,10 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       const nextLocale = language.value === 'en' ? 'en' : 'id';
       if (project.locale !== nextLocale) {
         project.locale = nextLocale;
+        document.documentElement.lang = nextLocale;
+        nav.setAttribute('aria-label', t('header.stepsAria'));
+        guideButton.querySelector('span')!.textContent = t('header.guide');
+        brand.querySelector('.eyebrow')!.textContent = t('header.eyebrow');
         changed();
         render();
       }
@@ -543,43 +772,59 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
     const languageField = el('div', 'form-field form-field--full');
     languageField.append(
-      el('span', 'form-field__label', 'Bahasa gift'),
+      el('span', 'form-field__label', t('identity.languageLabel')),
       languageSwitcher,
-      el('small', 'form-field__hint', 'Mengubah bahasa tombol dan pesan bawaan gift. Isi surat yang kamu tulis tidak diterjemahkan otomatis.'),
+      el('small', 'form-field__hint', t('identity.languageHint')),
     );
-    const subtitleField = field('Subtitle pembuka', subtitle, 'Kalimat pendek tepat di bawah judul pembuka. Maksimal 240 karakter.');
+    const subtitlePresets = createPresetRail(
+      'subtitle',
+      OPENING_SUBTITLE_PRESETS,
+      (preset) => project.intro.subtitle === preset.value[project.locale],
+      (preset) => [{
+        label: t('identity.introSubtitle'),
+        before: project.intro.subtitle,
+        after: preset.value[project.locale],
+      }],
+      (preset) => {
+        const value = preset.value[project.locale];
+        subtitle.value = value;
+        project.intro.subtitle = value;
+        changed();
+      },
+    );
+    const subtitleField = toolField(t('identity.introSubtitle'), subtitle, t('identity.introSubtitleHint'), subtitlePresets);
     subtitleField.classList.add('form-field--full');
 
     grid.append(
       languageField,
-      field('Nama penerima — orang yang akan membuka gift ini', recipient, 'Dipakai sebagai identitas gift di Studio. Nama ini tidak ditambahkan otomatis ke isi surat.'),
-      field('Nama pengirim — nama kamu sebagai pembuat surat', sender, 'Dipakai sebagai identitas gift di Studio. Tulis nama pada Penutup Surat jika ingin menampilkannya di gift.'),
-      field('Judul pembuka', title, 'Teks besar pertama yang terlihat sebelum amplop dibuka.'),
+      field(t('identity.recipientLabel'), recipient, t('identity.recipientHint')),
+      field(t('identity.senderLabel'), sender, t('identity.senderHint')),
+      field(t('identity.introTitle'), title, t('identity.introTitleHint')),
       subtitleField,
     );
     panel.append(grid);
   }
 
   function renderStyle(): void {
-    appendSectionHeader('Langkah 2 dari 5', 'Pilih suasana surat', 'Maskot dan warna dapat diganti kapan saja tanpa mengubah isi surat.', () => ({
-      title: 'Gaya Gift',
-      description: 'Scene Pertanyaan memperlihatkan warna dan maskot pilihanmu secara bersamaan.',
+    appendSectionHeader(t('step.progress', { current: 2 }), t('style.title'), t('style.copy'), () => ({
+      title: t('style.previewTitle'),
+      description: t('style.previewDescription'),
       initialScene: 'question',
-      tabs: [{ label: 'Intro', scene: 'intro' }, { label: 'Pertanyaan', scene: 'question' }],
+      tabs: [{ label: 'Intro', scene: 'intro' }, { label: t('letter.tabQuestion'), scene: 'question' }],
     }));
-    panel.append(el('h3', 'form-subheading', 'Maskot'));
+    panel.append(el('h3', 'form-subheading', t('style.mascot')));
     const mascotGrid = el('div', 'choice-grid choice-grid--mascot');
     (Object.keys(MASCOTS) as MascotId[]).forEach((id) => {
       const mascot = MASCOTS[id];
       const card = button('', 'visual-choice');
       card.classList.toggle('is-selected', project.mascotId === id);
       const image = el('img'); image.src = mascot.preview; image.alt = '';
-      const copy = el('span'); copy.append(el('strong', '', mascot.name), el('small', '', mascot.description));
+      const copy = el('span'); copy.append(el('strong', '', mascot.name), el('small', '', t(`mascot.${id}.description` as StudioMessageKey)));
       card.append(image, copy);
       card.addEventListener('click', () => { project.mascotId = id; changed(); render(); });
       mascotGrid.append(card);
     });
-    panel.append(mascotGrid, el('h3', 'form-subheading', 'Preset warna'));
+    panel.append(mascotGrid, el('h3', 'form-subheading', t('style.palette')));
     const paletteGrid = el('div', 'choice-grid choice-grid--palette');
     (Object.keys(PALETTES) as PaletteId[]).forEach((id) => {
       const palette = PALETTES[id];
@@ -589,7 +834,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       [palette.theme.background, palette.theme.surface, palette.theme.accent].forEach((color) => {
         const swatch = el('i'); swatch.style.background = color; swatches.append(swatch);
       });
-      const copy = el('span'); copy.append(el('strong', '', palette.name), el('small', '', palette.description));
+      const copy = el('span'); copy.append(el('strong', '', palette.name), el('small', '', t(`palette.${id}.description` as StudioMessageKey)));
       card.append(swatches, copy);
       card.addEventListener('click', () => { project.paletteId = id; changed(); render(); });
       paletteGrid.append(card);
@@ -604,15 +849,15 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
     const previewCopy = el('div', 'style-preview__content');
     const badge = el('span', 'style-preview__badge');
-    badge.append(el('span', 'style-preview__pulse'), document.createTextNode('LIVE PREVIEW'));
+    badge.append(el('span', 'style-preview__pulse'), document.createTextNode(t('style.livePreview')));
 
     const titleEl = el('strong', 'style-preview__title', project.intro.title || "I'm Sorry, Love...");
 
     const metaRow = el('div', 'style-preview__meta');
     const recipientBadge = el('span', 'style-preview__recipient');
     recipientBadge.append(
-      el('span', 'style-preview__recipient-label', 'Untuk: '),
-      el('strong', '', project.identity.recipient || 'Someone special'),
+      el('span', 'style-preview__recipient-label', `${t('style.for')} `),
+      el('strong', '', project.identity.recipient || t('style.someoneSpecial')),
     );
     const themePill = el('span', 'style-preview__theme-pill', `${selectedPalette.name} • ${selectedMascot.name}`);
     metaRow.append(recipientBadge, themePill);
@@ -630,16 +875,16 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   }
 
   function renderLetter(): void {
-    appendSectionHeader('Langkah 3 dari 5', 'Tulis isi hati dan jawabannya', 'Pisahkan paragraf surat dengan satu baris kosong. Tombol dan alurnya sudah diatur oleh template.', () => ({
-      title: 'Surat & Jawaban',
-      description: 'Preview dibuka langsung pada bagian yang terakhir kamu edit.',
+    appendSectionHeader(t('step.progress', { current: 3 }), t('letter.title'), t('letter.copy'), () => ({
+      title: t('letter.previewTitle'),
+      description: t('letter.previewDescription'),
       initialScene: letterPreviewScene,
       tabs: [
-        { label: 'Surat', scene: 'letter' },
-        { label: 'Pertanyaan', scene: 'question' },
-        { label: 'Diterima', scene: 'accepted' },
-        { label: 'Butuh waktu', scene: 'needs-time' },
-        { label: 'Janji', scene: 'promise' },
+        { label: t('letter.tabLetter'), scene: 'letter' },
+        { label: t('letter.tabQuestion'), scene: 'question' },
+        { label: t('letter.tabAccepted'), scene: 'accepted' },
+        { label: t('letter.tabNeedTime'), scene: 'needs-time' },
+        { label: t('letter.tabPromise'), scene: 'promise' },
       ],
     }));
     const examples = STUDIO_EXAMPLES[project.locale];
@@ -669,15 +914,131 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     bind(promiseHeading, (value) => { project.endings.promise.heading = value; }, 'promise');
     bind(promiseBody, (value) => { project.endings.promise.body = value; }, 'promise');
 
+    const letterPresets = createPresetRail(
+      'letter',
+      LETTER_BODY_PRESETS,
+      (preset) => {
+        const value = preset.value[project.locale];
+        return project.letter.heading === value.heading
+          && formatLetterText(project.letter.paragraphs) === value.body
+          && project.letter.signoff === value.signoff;
+      },
+      (preset) => {
+        const value = preset.value[project.locale];
+        return [
+          { label: t('letter.headingLabel'), before: project.letter.heading, after: value.heading },
+          { label: t('letter.bodyLabel'), before: formatLetterText(project.letter.paragraphs), after: value.body },
+          { label: t('letter.signoffLabel'), before: project.letter.signoff, after: value.signoff },
+        ];
+      },
+      (preset) => {
+        const value = preset.value[project.locale];
+        heading.value = value.heading;
+        paragraphs.value = value.body;
+        signoff.value = value.signoff;
+        project.letter.heading = value.heading;
+        project.letter.paragraphs = parseLetterText(value.body);
+        project.letter.signoff = value.signoff;
+        letterPreviewScene = 'letter';
+        changed();
+      },
+    );
+    const questionLanguage = createLocaleFillRail(
+      'question',
+      (locale) => project.question.heading === PROJECT_CONTENT_PRESETS[locale].question.heading,
+      (locale) => [{
+        label: t('question.label'),
+        before: project.question.heading,
+        after: PROJECT_CONTENT_PRESETS[locale].question.heading,
+      }],
+      (locale) => {
+        const value = PROJECT_CONTENT_PRESETS[locale].question.heading;
+        question.value = value;
+        project.question.heading = value;
+        letterPreviewScene = 'question';
+        changed();
+      },
+    );
+    const acceptedLanguage = createLocaleFillRail(
+      'accepted',
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.accepted;
+        return project.endings.accepted.heading === preset.heading && project.endings.accepted.body === preset.body;
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.accepted;
+        return [
+          { label: t('accepted.headingLabel'), before: project.endings.accepted.heading, after: preset.heading },
+          { label: t('accepted.bodyLabel'), before: project.endings.accepted.body, after: preset.body },
+        ];
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.accepted;
+        acceptedHeading.value = preset.heading;
+        acceptedBody.value = preset.body;
+        project.endings.accepted = structuredClone(preset);
+        letterPreviewScene = 'accepted';
+        changed();
+      },
+    );
+    const waitLanguage = createLocaleFillRail(
+      'needTime',
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.needTime;
+        return project.endings.needTime.heading === preset.heading
+          && project.endings.needTime.body === preset.body
+          && project.endings.needTime.loveLine === preset.loveLine;
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.needTime;
+        return [
+          { label: t('wait.headingLabel'), before: project.endings.needTime.heading, after: preset.heading },
+          { label: t('wait.bodyLabel'), before: project.endings.needTime.body, after: preset.body },
+          { label: t('wait.loveLineLabel'), before: project.endings.needTime.loveLine, after: preset.loveLine },
+        ];
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.needTime;
+        waitHeading.value = preset.heading;
+        waitBody.value = preset.body;
+        loveLine.value = preset.loveLine;
+        project.endings.needTime = structuredClone(preset);
+        letterPreviewScene = 'needs-time';
+        changed();
+      },
+    );
+    const promiseLanguage = createLocaleFillRail(
+      'promise',
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.promise;
+        return project.endings.promise.heading === preset.heading && project.endings.promise.body === preset.body;
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.promise;
+        return [
+          { label: t('promise.headingLabel'), before: project.endings.promise.heading, after: preset.heading },
+          { label: t('promise.bodyLabel'), before: project.endings.promise.body, after: preset.body },
+        ];
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.promise;
+        promiseHeading.value = preset.heading;
+        promiseBody.value = preset.body;
+        project.endings.promise = structuredClone(preset);
+        letterPreviewScene = 'promise';
+        changed();
+      },
+    );
+
     // 1. Visual Storyline Tracker
     const tracker = el('div', 'storyline-tracker');
-    tracker.setAttribute('aria-label', 'Alur perjalanan kado');
+    tracker.setAttribute('aria-label', t('letter.storylineTitle'));
     const trackerTitle = el('div', 'storyline-tracker__title');
     const trackerTitleText = el('span', '');
-    trackerTitleText.innerHTML = `${COMPASS_SVG}<span>Alur Perjalanan Kado</span>`;
+    trackerTitleText.innerHTML = `${COMPASS_SVG}<span>${t('letter.storylineTitle')}</span>`;
     trackerTitle.append(
       trackerTitleText,
-      el('small', '', 'Gunakan tombol preview di tiap blok untuk langsung meninjau adegan'),
+      el('small', '', t('letter.storylineHint')),
     );
     const trackerSteps = el('div', 'storyline-tracker__steps');
     const makeStep = (num: string, stepTitle: string, stepSubtitle: string) => {
@@ -690,13 +1051,13 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       return stepEl;
     };
     trackerSteps.append(
-      makeStep('1', 'Lembar Surat', 'Dibaca pertama'),
+      makeStep('1', t('letter.storylineLetter'), t('letter.storylineLetterHint')),
       el('span', 'storyline-step__arrow', '→'),
-      makeStep('2', 'Pertanyaan Maaf', 'Muncul 2 opsi'),
+      makeStep('2', t('letter.storylineQuestion'), t('letter.storylineQuestionHint')),
       el('span', 'storyline-step__arrow', '→'),
-      makeStep('3', 'Respon Pasangan', 'Yes / Butuh waktu'),
+      makeStep('3', t('letter.storylineResponse'), t('letter.storylineResponseHint')),
       el('span', 'storyline-step__arrow', '→'),
-      makeStep('4', 'Layar Janji', 'Komitmen penutup'),
+      makeStep('4', t('letter.storylinePromise'), t('letter.storylinePromiseHint')),
     );
     tracker.append(trackerTitle, trackerSteps);
 
@@ -716,19 +1077,19 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       );
       const previewBtn = button('', 'letter-group-card__preview-btn');
       previewBtn.innerHTML = `${EYE_PREVIEW_SVG}<span>${previewLabel}</span>`;
-      previewBtn.setAttribute('aria-label', `Lihat preview adegan ${cardTitle}`);
+      previewBtn.setAttribute('aria-label', `${t('common.preview')}: ${cardTitle}`);
       previewBtn.addEventListener('click', () => {
         letterPreviewScene = scene;
         livePreview.open({
-          title: 'Surat & Jawaban',
-          description: 'Pratinjau lembar surat dan pilihan jawaban.',
+          title: t('letter.previewTitle'),
+          description: t('letter.previewDescription'),
           initialScene: scene,
           tabs: [
-            { label: 'Surat', scene: 'letter' },
-            { label: 'Pertanyaan', scene: 'question' },
-            { label: 'Diterima', scene: 'accepted' },
-            { label: 'Butuh waktu', scene: 'needs-time' },
-            { label: 'Janji', scene: 'promise' },
+            { label: t('letter.tabLetter'), scene: 'letter' },
+            { label: t('letter.tabQuestion'), scene: 'question' },
+            { label: t('letter.tabAccepted'), scene: 'accepted' },
+            { label: t('letter.tabNeedTime'), scene: 'needs-time' },
+            { label: t('letter.tabPromise'), scene: 'promise' },
           ],
         }, previewBtn);
       });
@@ -740,60 +1101,61 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
     // Card 1: Surat Utama
     const letterCard = createLetterCard(
-      '1. Lembar Surat Utama',
-      'Halaman pembuka setelah amplop dibuka, diiringi lagu dan tulisan tangan hangat.',
+      t('letter.mainTitle'),
+      t('letter.mainCopy'),
       'letter',
-      'Preview Surat ↗',
+      t('common.preview'),
     );
     letterCard.body.append(
-      field('Judul surat', heading, 'Judul tulisan tangan di bagian paling atas halaman surat.'),
-      field('Isi surat', paragraphs, 'Isi utama yang dibaca penerima. Pisahkan paragraf dengan satu baris kosong; maksimal 10.000 karakter dan 20 paragraf.'),
-      field('Penutup surat', signoff, 'Kalimat sebelum nama pengirim, misalnya “With all my love”.'),
+      field(t('letter.headingLabel'), heading, t('letter.headingHint')),
+      toolField(t('letter.bodyLabel'), paragraphs, t('letter.bodyHint'), letterPresets),
+      field(t('letter.signoffLabel'), signoff, t('letter.signoffHint')),
     );
 
     // Card 2: Pertanyaan Maaf
     const questionCard = createLetterCard(
-      '2. Pertanyaan Permintaan Maaf',
-      'Layar interaktif setelah pasangan selesai membaca surat dan menekan tombol Continue.',
+      t('question.cardTitle'),
+      t('question.cardCopy'),
       'question',
-      'Preview Pertanyaan ↗',
+      t('common.preview'),
     );
     questionCard.body.append(
-      field('Pertanyaan maaf', question, 'Pertanyaan utama untuk meminta maaf, misalnya “Maukah kamu memaafkanku?”.'),
+      questionLanguage,
+      field(t('question.label'), question, t('question.hint')),
     );
 
     // Card 3: Jawaban Diterima
     const acceptedCard = createLetterCard(
-      '3. Jawaban Ketika Diterima (Pilihan "Yes")',
-      'Halaman bahagia dan rasa syukur yang muncul seketika saat pasangan menekan tombol “Yes”.',
+      t('accepted.cardTitle'),
+      t('accepted.cardCopy'),
       'accepted',
-      'Preview Layar "Yes" ↗',
+      t('common.preview'),
     );
     const acceptedGrid = el('div', 'form-grid form-grid--two');
-    acceptedGrid.append(field('Judul', acceptedHeading), field('Isi', acceptedBody));
-    acceptedCard.body.append(acceptedGrid);
+    acceptedGrid.append(field(t('accepted.headingLabel'), acceptedHeading), field(t('accepted.bodyLabel'), acceptedBody));
+    acceptedCard.body.append(acceptedLanguage, acceptedGrid);
 
     // Card 4: Jawaban Butuh Waktu
     const waitingCard = createLetterCard(
-      '4. Jawaban Ketika Butuh Waktu (Pilihan "I need more time")',
-      'Halaman penuh pengertian dan penenang jika pasangan masih memerlukan waktu untuk berpikir.',
+      t('wait.cardTitle'),
+      t('wait.cardCopy'),
       'needs-time',
-      'Preview "Butuh Waktu" ↗',
+      t('common.preview'),
     );
     const waitingGrid = el('div', 'form-grid form-grid--two');
-    waitingGrid.append(field('Judul', waitHeading), field('Isi', waitBody), field('Kalimat cinta', loveLine));
-    waitingCard.body.append(waitingGrid);
+    waitingGrid.append(field(t('wait.headingLabel'), waitHeading), field(t('wait.bodyLabel'), waitBody), field(t('wait.loveLineLabel'), loveLine));
+    waitingCard.body.append(waitLanguage, waitingGrid);
 
     // Card 5: Halaman Janji
     const promiseCard = createLetterCard(
-      '5. Halaman Janji & Komitmen',
-      'Halaman penutup kado setelah permintaan maaf diterima dan pasangan menekan tombol Continue.',
+      t('promise.cardTitle'),
+      t('promise.cardCopy'),
       'promise',
-      'Preview Halaman Janji ↗',
+      t('common.preview'),
     );
     const promiseGrid = el('div', 'form-grid form-grid--two');
-    promiseGrid.append(field('Judul', promiseHeading), field('Isi', promiseBody));
-    promiseCard.body.append(promiseGrid);
+    promiseGrid.append(field(t('promise.headingLabel'), promiseHeading), field(t('promise.bodyLabel'), promiseBody));
+    promiseCard.body.append(promiseLanguage, promiseGrid);
 
     panel.append(
       tracker,
@@ -806,9 +1168,9 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   }
 
   function renderMusic(): void {
-    appendSectionHeader('Langkah 4 dari 5', 'Pilih lagu untuk surat ini', 'Pilih hingga 3 lagu untuk mengiringi suratmu. Lagu akan diputar berurutan sebagai playlist.', () => ({
-      title: 'Musik',
-      description: 'Preview membuka halaman Surat agar player terlihat dalam konteks gift.',
+    appendSectionHeader(t('step.progress', { current: 4 }), t('music.title'), t('music.copy'), () => ({
+      title: t('step.4.title'),
+      description: t('music.previewDescription'),
       initialScene: 'letter',
     }));
 
@@ -862,23 +1224,23 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const playlistHeader = el('header', 'selected-playlist__header');
     const playlistTitleWrap = el('div', 'selected-playlist__title-wrap');
     playlistTitleWrap.append(
-      el('span', 'form-field__label', 'Daftar Lagu Terpilih'),
-      el('p', 'selected-playlist__caption', 'Pilih hingga 3 lagu. Lagu akan diputar berurutan saat penerima membaca surat.'),
+      el('span', 'form-field__label', t('music.playlistTitle')),
+      el('p', 'selected-playlist__caption', t('music.playlistHint')),
     );
-    const countBadge = el('span', `selected-playlist__count-badge${tracks.length >= 3 ? ' is-full' : ''}`, `${tracks.length}/3 lagu terpilih`);
+    const countBadge = el('span', `selected-playlist__count-badge${tracks.length >= 3 ? ' is-full' : ''}`, t('music.songCount', { count: tracks.length }));
     playlistHeader.append(playlistTitleWrap, countBadge);
     playlistCard.append(playlistHeader);
 
     const playlistList = el('div', 'selected-playlist__list');
     if (tracks.length === 0) {
-      const emptyNote = el('div', 'selected-playlist__empty', 'Belum ada lagu yang dipilih. Silakan pilih lagu dari katalog di bawah atau upload lagu sendiri.');
+      const emptyNote = el('div', 'selected-playlist__empty', t('music.emptyStatus'));
       playlistList.append(emptyNote);
     } else {
       tracks.forEach((track, index) => {
         const isCurrentPreview = previewTrackIndex === index;
         const item = el('div', `selected-playlist__item${isCurrentPreview ? ' is-active' : ''}`);
 
-        const slotBadge = el('span', `selected-playlist__slot-badge${index === 0 ? ' is-primary' : ''}`, index === 0 ? '#1 (Utama)' : `#${index + 1}`);
+        const slotBadge = el('span', `selected-playlist__slot-badge${index === 0 ? ' is-primary' : ''}`, index === 0 ? `#1 (${t('music.primary')})` : `#${index + 1}`);
 
         const coverThumb = el('span', 'selected-playlist__thumb');
         if (track.coverUrl) {
@@ -893,15 +1255,15 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
         const info = el('div', 'selected-playlist__info');
         info.append(
-          el('strong', 'selected-playlist__track-title', track.title || 'Untitled'),
-          el('span', 'selected-playlist__track-artist', track.artist || 'Unknown artist'),
+          el('strong', 'selected-playlist__track-title', track.title || t('music.noSong')),
+          el('span', 'selected-playlist__track-artist', track.artist || t('music.noArtist')),
         );
 
         const actions = el('div', 'selected-playlist__actions');
 
         const isThisPlaying = isCurrentPreview && !audio.paused;
-        const playBtn = button(isThisPlaying ? 'Jeda' : 'Dengarkan', `selected-playlist__play-btn${isThisPlaying ? ' is-playing' : ''}`);
-        playBtn.setAttribute('aria-label', `${isThisPlaying ? 'Jeda' : 'Dengarkan'} ${track.title}`);
+        const playBtn = button(isThisPlaying ? t('music.pause') : t('music.catalogListen'), `selected-playlist__play-btn${isThisPlaying ? ' is-playing' : ''}`);
+        playBtn.setAttribute('aria-label', `${isThisPlaying ? t('music.pause') : t('music.catalogListen')} ${track.title}`);
         playBtn.addEventListener('click', async () => {
           musicCatalog?.stop();
           if (previewTrackIndex === index && !audio.paused) {
@@ -923,8 +1285,8 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
         if (index > 0) {
           const moveUp = button('↑', 'selected-playlist__order-btn');
-          moveUp.setAttribute('aria-label', `Pindahkan ${track.title} ke atas`);
-          moveUp.title = 'Pindahkan ke atas';
+          moveUp.setAttribute('aria-label', t('music.moveUp', { title: track.title }));
+          moveUp.title = t('music.moveUp', { title: track.title });
           moveUp.addEventListener('click', () => {
             const temp = tracks[index - 1];
             tracks[index - 1] = track;
@@ -940,8 +1302,8 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
         if (index < tracks.length - 1) {
           const moveDown = button('↓', 'selected-playlist__order-btn');
-          moveDown.setAttribute('aria-label', `Pindahkan ${track.title} ke bawah`);
-          moveDown.title = 'Pindahkan ke bawah';
+          moveDown.setAttribute('aria-label', t('music.moveDown', { title: track.title }));
+          moveDown.title = t('music.moveDown', { title: track.title });
           moveDown.addEventListener('click', () => {
             const temp = tracks[index + 1];
             tracks[index + 1] = track;
@@ -956,13 +1318,14 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
         }
 
         const removeBtn = button('', 'selected-playlist__remove-btn');
-        removeBtn.innerHTML = `${REMOVE_ICON_SVG}<span>Hapus</span>`;
-        removeBtn.setAttribute('aria-label', `Hapus ${track.title} dari playlist`);
+        removeBtn.innerHTML = `${REMOVE_ICON_SVG}<span>${t('common.remove')}</span>`;
+        removeBtn.setAttribute('aria-label', t('music.catalogRemoveAria', { title: track.title }));
         removeBtn.addEventListener('click', () => {
           openTwoStepDeleteModal({
-            category: 'Lagu Playlist',
-            title: track.title || 'Lagu Terpilih',
-            subtitle: track.artist || 'Daftar putar kado',
+            t,
+            category: t('music.playlistTitle'),
+            title: track.title || t('music.noSong'),
+            subtitle: track.artist || t('music.playlistHint'),
             previewUrl: track.coverUrl,
             previewKind: track.coverUrl ? 'image' : 'audio',
             onConfirm: () => {
@@ -984,7 +1347,8 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       if (tracks.length < 3) {
         const remaining = 3 - tracks.length;
         const emptySlot = el('div', 'selected-playlist__empty-slot');
-        emptySlot.innerHTML = `<span class="empty-slot-plus">+</span> <span>Slot #${tracks.length + 1} Kosong — Pilih <strong>${remaining} lagu lagi</strong> dari katalog atau upload</span>`;
+        emptySlot.innerHTML = '<span class="empty-slot-plus">+</span>';
+        emptySlot.append(el('span', '', t('music.slotEmpty', { slot: tracks.length + 1, count: remaining })));
         playlistList.append(emptySlot);
       }
     }
@@ -999,25 +1363,25 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       image.alt = '';
       cover.append(image);
     } else {
-      cover.append(el('span', '', 'Cover'));
+      cover.append(el('span', '', t('music.uploadCover')));
     }
     const meta = el('div', 'studio-player__meta');
     const previewBadge = tracks.length > 1
       ? `PREVIEW (${previewTrackIndex + 1}/${tracks.length})`
       : 'PREVIEW';
     const titleViewport = el('span', 'studio-player__title-viewport');
-    const titleText = el('strong', 'studio-player__title-text', activeTrack.title || 'Judul lagu');
+    const titleText = el('strong', 'studio-player__title-text', activeTrack.title || t('music.noSong'));
     titleViewport.append(titleText);
     meta.append(
       el('small', '', previewBadge),
       titleViewport,
-      el('span', '', activeTrack.artist || 'Nama artis'),
+      el('span', '', activeTrack.artist || t('music.noArtist')),
     );
 
     const play = button('', 'player-button');
     play.innerHTML = audio.paused ? PLAY_ICON_SVG : PAUSE_ICON_SVG;
     play.disabled = !activeTrack.audioUrl;
-    play.setAttribute('aria-label', audio.paused ? 'Putar lagu terpilih' : 'Jeda lagu terpilih');
+    play.setAttribute('aria-label', audio.paused ? t('music.play') : t('music.pause'));
     play.addEventListener('click', async () => {
       if (!activeTrack.audioUrl) return;
       musicCatalog?.stop();
@@ -1026,7 +1390,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           await audio.play();
         } catch {
           const message = panel.querySelector<HTMLElement>('.studio-player__status');
-          if (message) message.textContent = 'Lagu tidak dapat diputar. Pilih lagu lain atau upload MP3.';
+          if (message) message.textContent = t('error.songPlayback');
         }
       } else {
         audio.pause();
@@ -1039,7 +1403,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     seek.max = '100';
     seek.value = audio.duration ? String((audio.currentTime / audio.duration) * 100) : '0';
     seek.disabled = !activeTrack.audioUrl;
-    seek.setAttribute('aria-label', 'Posisi lagu terpilih');
+    seek.setAttribute('aria-label', t('music.position'));
     seek.addEventListener('input', () => {
       if (audio.duration) audio.currentTime = Number(seek.value) / 100 * audio.duration;
     });
@@ -1051,7 +1415,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     if (tracks.length > 1) {
       const prevTrackBtn = button('', 'player-nav-button');
       prevTrackBtn.innerHTML = PREV_TRACK_SVG;
-      prevTrackBtn.setAttribute('aria-label', 'Lagu sebelumnya di playlist');
+      prevTrackBtn.setAttribute('aria-label', t('music.previous'));
       prevTrackBtn.addEventListener('click', () => {
         musicCatalog?.stop();
         previewTrackIndex = (previewTrackIndex - 1 + tracks.length) % tracks.length;
@@ -1060,7 +1424,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       });
       const nextTrackBtn = button('', 'player-nav-button');
       nextTrackBtn.innerHTML = NEXT_TRACK_SVG;
-      nextTrackBtn.setAttribute('aria-label', 'Lagu selanjutnya di playlist');
+      nextTrackBtn.setAttribute('aria-label', t('music.next'));
       nextTrackBtn.addEventListener('click', () => {
         musicCatalog?.stop();
         previewTrackIndex = (previewTrackIndex + 1) % tracks.length;
@@ -1072,7 +1436,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       controls.append(play, current, seek, duration);
     }
 
-    const playerStatus = el('p', 'studio-player__status', activeTrack.audioUrl ? '' : 'Pilih lagu dari katalog atau upload MP3 sendiri.');
+    const playerStatus = el('p', 'studio-player__status', activeTrack.audioUrl ? '' : t('music.emptyStatus'));
     playerStatus.setAttribute('aria-live', 'polite');
     player.append(cover, meta, controls, playerStatus);
 
@@ -1080,9 +1444,9 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const sourcePicker = el('section', 'music-source-picker');
     const tabs = el('div', 'music-source-tabs');
     tabs.setAttribute('role', 'tablist');
-    tabs.setAttribute('aria-label', 'Sumber musik');
-    const catalogTab = button('Pilih dari katalog', 'music-source-tab');
-    const uploadTab = button('Upload lagu sendiri', 'music-source-tab');
+    tabs.setAttribute('aria-label', t('music.sourceAria'));
+    const catalogTab = button(t('music.catalogTab'), 'music-source-tab');
+    const uploadTab = button(t('music.uploadTab'), 'music-source-tab');
     catalogTab.setAttribute('role', 'tab');
     uploadTab.setAttribute('role', 'tab');
     const catalogPanel = el('div', 'music-source-panel');
@@ -1091,6 +1455,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     uploadPanel.setAttribute('role', 'tabpanel');
 
     musicCatalog = createMusicCatalog({
+      t,
       selectedAudioUrls: () => (project.music.tracks ?? []).map((t) => t.audioUrl),
       beforePlay: () => stopStudioAudio(),
       onSelect: (track: PlaylistTrack) => {
@@ -1149,8 +1514,8 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
         `upload-badge${currentUrl ? ' upload-badge--success' : ' upload-badge--empty'}`,
       );
       topBadge.innerHTML = currentUrl
-        ? `${CHECK_ICON_SVG}<span>${kind === 'audio' ? 'Lagu Terpasang & Siap' : 'Foto Cover Terpasang'}</span>`
-        : '<span>Belum Ada File</span>';
+        ? `${CHECK_ICON_SVG}<span>${kind === 'audio' ? t('music.fileReady') : t('music.coverReady')}</span>`
+        : `<span>${t('music.noFile')}</span>`;
       top.append(el('strong', '', label), topBadge);
 
       const input = el('input') as HTMLInputElement;
@@ -1160,13 +1525,13 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
       const progressWrap = el('div', 'upload-progress-wrap');
       progressWrap.hidden = true;
-      const progressLabel = el('span', 'upload-progress-label', 'Mengunggah 0%...');
+      const progressLabel = el('span', 'upload-progress-label', t('music.uploading', { progress: 0 }));
       const progress = el('div', 'upload-progress');
       const progressBar = el('i');
       progress.append(progressBar);
       progressWrap.append(progressLabel, progress);
 
-      const retry = button('Coba lagi', 'text-button');
+      const retry = button(t('common.retry'), 'text-button');
       retry.hidden = true;
 
       let localPreviewUrl = '';
@@ -1181,10 +1546,10 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           vinyl.innerHTML = MUSIC_NOTE_SVG;
           const meta = el('div', 'upload-track-meta');
           const trackTag = el('span', 'upload-state-tag');
-          trackTag.innerHTML = `${CHECK_ICON_SVG}<span>Musik Latar Aktif di Surat</span>`;
+          trackTag.innerHTML = `${CHECK_ICON_SVG}<span>${t('music.activeBackground')}</span>`;
           meta.append(
-            el('strong', '', project.music.title || 'Lagu Pengiring Surat'),
-            el('span', '', project.music.artist || 'Artis Musik'),
+            el('strong', '', project.music.title || t('music.backgroundFallback')),
+            el('span', '', project.music.artist || t('music.artistFallback')),
             trackTag,
           );
           trackStrip.append(vinyl, meta);
@@ -1195,7 +1560,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           const isCurrentlyPlaying = audio.src === currentUrl && !audio.paused;
           miniPlay.innerHTML = isCurrentlyPlaying ? PAUSE_ICON_SVG : PLAY_ICON_SVG;
           if (isCurrentlyPlaying) miniPlay.classList.add('is-playing');
-          miniPlay.setAttribute('aria-label', isCurrentlyPlaying ? 'Jeda preview lagu' : 'Dengarkan preview lagu');
+          miniPlay.setAttribute('aria-label', isCurrentlyPlaying ? t('music.catalogPause') : t('music.catalogListen'));
           miniPlay.addEventListener('click', async () => {
             musicCatalog?.stop();
             if (audio.src === currentUrl && !audio.paused) {
@@ -1225,7 +1590,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           miniSeek.min = '0';
           miniSeek.max = '100';
           miniSeek.value = audio.src === currentUrl && audio.duration ? String((audio.currentTime / audio.duration) * 100) : '0';
-          miniSeek.setAttribute('aria-label', 'Posisi putar preview lagu');
+          miniSeek.setAttribute('aria-label', t('music.position'));
           miniSeek.addEventListener('input', () => {
             if (audio.src === currentUrl && audio.duration) {
               audio.currentTime = (Number(miniSeek.value) / 100) * audio.duration;
@@ -1245,24 +1610,25 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           guideIcon.innerHTML = INFO_ICON_SVG;
           const guideText = el('div', 'upload-guide-callout__text');
           guideText.append(
-            el('strong', '', 'Otomatis Terpasang & Siap Diputar'),
-            el('p', '', 'Lagu ini otomatis aktif sebagai musik latar kado. Saat pasanganmu membuka amplop surat, lagu ini akan langsung diputar mengiringi setiap kata maafmu.'),
+            el('strong', '', t('music.autoReadyTitle')),
+            el('p', '', t('music.autoReadyCopy')),
           );
           guide.append(guideIcon, guideText);
 
           // Action Toolbar
           const actions = el('div', 'upload-action-bar');
-          const changeBtn = button('Ganti File Lagu', 'ui-button ui-button--secondary');
+          const changeBtn = button(t('music.changeAudio'), 'ui-button ui-button--secondary');
           changeBtn.addEventListener('click', () => input.click());
 
           const deleteBtn = button('', 'ui-button ui-button--danger-outline');
-          deleteBtn.innerHTML = `${TRASH_ICON_SVG}<span>Hapus Lagu</span>`;
-          deleteBtn.setAttribute('aria-label', 'Hapus lagu yang sudah diunggah');
+          deleteBtn.innerHTML = `${TRASH_ICON_SVG}<span>${t('music.deleteAudio')}</span>`;
+          deleteBtn.setAttribute('aria-label', t('music.deleteAudioAria'));
           deleteBtn.addEventListener('click', () => {
             openTwoStepDeleteModal({
-              category: 'Lagu MP3',
-              title: project.music.title || 'Lagu MP3',
-              subtitle: project.music.artist || 'Musik latar kado',
+              t,
+              category: t('music.uploadAudio'),
+              title: project.music.title || t('music.noSong'),
+              subtitle: project.music.artist || t('music.backgroundFallback'),
               previewKind: 'audio',
               onConfirm: () => {
                 stopStudioAudio();
@@ -1286,16 +1652,16 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           const coverFrame = el('div', 'upload-cover-preview');
           const previewImage = el('img') as HTMLImageElement;
           previewImage.src = currentUrl;
-          previewImage.alt = 'Preview cover album lagu';
+          previewImage.alt = t('music.coverAlt');
           previewImage.decoding = 'async';
           coverFrame.append(previewImage);
 
           const coverMeta = el('div', 'upload-cover-meta');
           const visualTag = el('span', 'upload-state-tag');
-          visualTag.innerHTML = `${CHECK_ICON_SVG}<span>Visual Kado Aktif</span>`;
+          visualTag.innerHTML = `${CHECK_ICON_SVG}<span>${t('music.coverVisualActive')}</span>`;
           coverMeta.append(
-            el('strong', '', 'Foto Piringan Hitam Terpasang'),
-            el('span', '', 'Foto ini aktif sebagai cover album pada piringan hitam amplop & player surat.'),
+            el('strong', '', t('music.coverInstalled')),
+            el('span', '', t('music.coverInstalledCopy')),
             visualTag,
           );
           coverShowcase.append(coverFrame, coverMeta);
@@ -1306,24 +1672,25 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
           guideIcon.innerHTML = INFO_ICON_SVG;
           const guideText = el('div', 'upload-guide-callout__text');
           guideText.append(
-            el('strong', '', 'Cover Album Kado Terpasang'),
-            el('p', '', 'Foto ini akan tampil di piringan hitam saat amplop dibuka dan pada player musik kado agar surat terasa personal dan penuh kenangan.'),
+            el('strong', '', t('music.coverReadyTitle')),
+            el('p', '', t('music.coverReadyCopy')),
           );
           guide.append(guideIcon, guideText);
 
           // Action Toolbar
           const actions = el('div', 'upload-action-bar');
-          const changeBtn = button('Ganti Foto Cover', 'ui-button ui-button--secondary');
+          const changeBtn = button(t('music.changeCover'), 'ui-button ui-button--secondary');
           changeBtn.addEventListener('click', () => input.click());
 
           const deleteBtn = button('', 'ui-button ui-button--danger-outline');
-          deleteBtn.innerHTML = `${TRASH_ICON_SVG}<span>Hapus Cover</span>`;
-          deleteBtn.setAttribute('aria-label', 'Hapus cover foto yang sudah diunggah');
+          deleteBtn.innerHTML = `${TRASH_ICON_SVG}<span>${t('music.deleteCover')}</span>`;
+          deleteBtn.setAttribute('aria-label', t('music.deleteCoverAria'));
           deleteBtn.addEventListener('click', () => {
             openTwoStepDeleteModal({
-              category: 'Foto Cover',
-              title: 'Foto Thumbnail Lagu',
-              subtitle: 'Cover piringan hitam surat',
+              t,
+              category: t('music.uploadCover'),
+              title: t('music.coverInstalled'),
+              subtitle: t('music.coverInstalledCopy'),
               previewUrl: currentUrl,
               previewKind: 'image',
               onConfirm: () => {
@@ -1354,17 +1721,17 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
         const emptyTitle = el(
           'strong',
           'upload-dropzone__title',
-          kind === 'audio' ? 'Belum Ada Lagu yang Diunggah' : 'Belum Ada Foto Cover',
+          kind === 'audio' ? t('music.audioEmptyTitle') : t('music.coverEmptyTitle'),
         );
         const emptyHint = el(
           'p',
           'upload-dropzone__hint',
           kind === 'audio'
-            ? 'Unggah lagu MP3 spesial kalian berdua (maks. 25 MB) untuk mengiringi surat.'
-            : 'Unggah foto cover album (JPG, PNG, atau WebP) untuk piringan hitam kado.',
+            ? t('music.audioEmptyHint')
+            : t('music.coverEmptyHint'),
         );
         const selectBtn = button(
-          kind === 'audio' ? 'Pilih File MP3' : 'Pilih Foto Cover',
+          kind === 'audio' ? t('music.chooseAudio') : t('music.chooseCover'),
           'ui-button ui-button--secondary upload-dropzone__btn',
         );
         selectBtn.addEventListener('click', () => input.click());
@@ -1376,11 +1743,11 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       const perform = async (file: File): Promise<void> => {
         retry.hidden = true;
         progressWrap.hidden = false;
-        progressLabel.textContent = 'Mengunggah 0%...';
+        progressLabel.textContent = t('music.uploading', { progress: 0 });
         progressBar.style.width = '0%';
         try {
           const result = await uploadMedia(projectId, token, kind, file, (percent) => {
-            progressLabel.textContent = `Mengunggah ${percent}%...`;
+            progressLabel.textContent = t('music.uploading', { progress: percent });
             progressBar.style.width = `${percent}%`;
           });
           if (kind === 'audio') {
@@ -1402,11 +1769,11 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
               project.music.tracks[0].coverUrl = result.url;
             }
           }
-          progressLabel.textContent = 'Upload selesai! Memasang file...';
+          progressLabel.textContent = t('music.uploadDone');
           changed();
           window.setTimeout(render, 350);
         } catch (error) {
-          progressLabel.textContent = errorMessage(error);
+          progressLabel.textContent = errorMessage(error, t('error.generic'), t);
           retry.hidden = false;
           uploadRetry = () => void perform(file);
         }
@@ -1427,12 +1794,12 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     }
 
     form.append(
-      field('Judul lagu', title, 'Nama lagu yang tampil pada player di dalam surat.'),
-      field('Artis', artist, 'Nama penyanyi atau artis yang tampil di bawah judul.'),
-      uploadField('audio', 'Lagu MP3 Utama', 'audio/mpeg,.mp3', project.music.audioUrl),
-      uploadField('cover', 'Thumbnail / Cover Piringan Hitam', 'image/jpeg,image/png,image/webp', project.music.coverUrl),
+      field(t('music.titleLabel'), title),
+      field(t('music.artistLabel'), artist),
+      uploadField('audio', t('music.uploadAudio'), 'audio/mpeg,.mp3', project.music.audioUrl),
+      uploadField('cover', t('music.uploadCover'), 'image/jpeg,image/png,image/webp', project.music.coverUrl),
     );
-    uploadPanel.append(el('p', 'music-source-help', 'Upload satu MP3 maksimal 25 MB dan satu thumbnail JPG, PNG, atau WebP.'), form);
+    uploadPanel.append(el('p', 'music-source-help', t('music.uploadHelp')), form);
 
     const selectSource = (source: 'catalog' | 'upload'): void => {
       musicSource = source;
@@ -1467,9 +1834,9 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
   function renderPublish(): void {
     appendSectionHeader(
-      'Langkah 5 dari 5',
-      'Preview dan publikasikan',
-      'Preview memakai renderer yang sama dengan halaman penerima. Perubahan draft tidak akan mengubah gift publik sampai kamu menekan Publish.',
+      t('step.progress', { current: 5 }),
+      t('publish.title'),
+      t('publish.copy'),
       null,
     );
 
@@ -1487,9 +1854,9 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
     renderScannableLoveBarcode(barcodeCanvas, giftUrl, selectedPalette.theme.surface, 1000);
 
-    const downloadButton = button('Download Barcode', 'publish-barcode-download-btn');
-    downloadButton.innerHTML = `${DOWNLOAD_ICON_SVG}<span>Download Barcode</span>`;
-    downloadButton.title = 'Download barcode beresolusi tinggi (PNG)';
+    const downloadButton = button(t('publish.downloadBarcode'), 'publish-barcode-download-btn');
+    downloadButton.innerHTML = `${DOWNLOAD_ICON_SVG}<span>${t('publish.downloadBarcode')}</span>`;
+    downloadButton.title = t('publish.downloadBarcodeTitle');
     downloadButton.addEventListener('click', () => {
       const dataUrl = barcodeCanvas.toDataURL('image/png');
       const downloadLink = document.createElement('a');
@@ -1503,30 +1870,33 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     barcodeCard.append(barcodeFrame, downloadButton);
 
     const summary = el('div', issues.length ? 'publish-summary has-issues' : 'publish-summary is-ready');
-    summary.append(el('strong', '', issues.length ? `${issues.length} hal perlu dilengkapi` : 'Semua komponen kado sudah lengkap'));
+    summary.append(el('strong', '', issues.length ? t('publish.issueCount', { count: issues.length }) : t('publish.ready')));
     if (issues.length) {
       const list = el('ul');
-      issues.forEach((issue) => list.append(el('li', '', issue.message)));
+      issues.forEach((issue) => {
+        const key = `validation.${issue.path}` as StudioMessageKey;
+        list.append(el('li', '', studioText(project.locale, key)));
+      });
       summary.append(list);
     } else {
-      summary.append(el('p', '', 'Kado surat interaktif ini sudah siap untuk dipublikasikan dan dibagikan ke orang tersayang.'));
+      summary.append(el('p', '', t('publish.readyCopy')));
     }
 
     const actions = el('div', 'publish-actions');
-    const preview = button('Buka preview penuh', 'ui-button ui-button--secondary');
-    const publish = button(project.publishedAt ? 'Publish Changes' : 'Publish Gift', 'ui-button');
+    const preview = button(t('publish.fullPreview'), 'ui-button ui-button--secondary');
+    const publish = button(project.publishedAt ? t('publish.publishChanges') : t('publish.publishGift'), 'ui-button');
     publish.disabled = issues.length > 0 || project.status === 'archived';
     preview.addEventListener('click', () => livePreview.open({
-      title: 'Preview Gift Lengkap',
-      description: 'Coba seluruh alur mulai dari intro seperti yang akan dilihat penerima.',
+      title: t('publish.fullPreviewTitle'),
+      description: t('publish.fullPreviewCopy'),
       initialScene: 'intro',
     }, preview));
     publish.addEventListener('click', async () => {
-      setBusy(publish, true, 'Mempublikasikan…');
+      setBusy(publish, true, t('publish.publishing'));
       try {
         await save(true);
       } catch (error) {
-        window.alert(errorMessage(error));
+        window.alert(errorMessage(error, t('error.generic'), t));
       } finally {
         setBusy(publish, false);
       }
@@ -1541,8 +1911,8 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
 
       const publishedHeader = el('div', 'published-link__header');
       publishedHeader.append(
-        el('span', 'published-link__label', 'Gift URL'),
-        el('span', 'published-link__status', 'Live & Siap Dibagikan'),
+        el('span', 'published-link__label', t('publish.urlLabel')),
+        el('span', 'published-link__status', t('publish.live')),
       );
 
       const publishedBox = el('div', 'published-link__box');
@@ -1551,16 +1921,16 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       urlInput.value = url;
       urlInput.readOnly = true;
 
-      const copyBtn = button('Salin Link', 'published-link__copy-btn');
-      copyBtn.innerHTML = `${COPY_ICON_SVG}<span>Salin Link</span>`;
-      copyBtn.setAttribute('aria-label', 'Salin link kado');
+      const copyBtn = button(t('publish.copyLink'), 'published-link__copy-btn');
+      copyBtn.innerHTML = `${COPY_ICON_SVG}<span>${t('publish.copyLink')}</span>`;
+      copyBtn.setAttribute('aria-label', t('publish.copyAria'));
       copyBtn.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(url);
-          copyBtn.innerHTML = `${CHECK_ICON_SVG}<span>Tersalin!</span>`;
+          copyBtn.innerHTML = `${CHECK_ICON_SVG}<span>${t('publish.copied')}</span>`;
           copyBtn.classList.add('is-copied');
           setTimeout(() => {
-            copyBtn.innerHTML = `${COPY_ICON_SVG}<span>Salin Link</span>`;
+            copyBtn.innerHTML = `${COPY_ICON_SVG}<span>${t('publish.copyLink')}</span>`;
             copyBtn.classList.remove('is-copied');
           }, 2000);
         } catch {
@@ -1572,8 +1942,8 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       openLink.href = url;
       openLink.target = '_blank';
       openLink.rel = 'noopener noreferrer';
-      openLink.innerHTML = `${EXTERNAL_LINK_SVG}<span>Buka</span>`;
-      openLink.setAttribute('aria-label', 'Buka link kado');
+      openLink.innerHTML = `${EXTERNAL_LINK_SVG}<span>${t('common.open')}</span>`;
+      openLink.setAttribute('aria-label', t('publish.openAria'));
 
       publishedBox.append(urlInput, copyBtn, openLink);
       published.append(publishedHeader, publishedBox);
@@ -1590,10 +1960,10 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     panel.replaceChildren();
     [renderIdentity, renderStyle, renderLetter, renderMusic, renderPublish][activeStep]();
     const footer = el('footer', 'studio-panel-footer');
-    const previous = button('Sebelumnya', 'ui-button ui-button--secondary'); previous.disabled = activeStep === 0;
-    const next = button(activeStep === steps.length - 1 ? 'Kembali ke awal' : 'Berikutnya', 'ui-button');
+    const previous = button(t('common.previous'), 'ui-button ui-button--secondary'); previous.disabled = activeStep === 0;
+    const next = button(activeStep === STEP_COUNT - 1 ? t('publish.backToStart') : t('common.next'), 'ui-button');
     previous.addEventListener('click', () => { activeStep -= 1; render(); });
-    next.addEventListener('click', () => { activeStep = activeStep === steps.length - 1 ? 0 : activeStep + 1; render(); });
+    next.addEventListener('click', () => { activeStep = activeStep === STEP_COUNT - 1 ? 0 : activeStep + 1; render(); });
     footer.append(previous, next); panel.append(footer);
   }
 
@@ -1627,7 +1997,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     if (!play) return;
     const isPaused = audio.paused;
     play.innerHTML = isPaused ? PLAY_ICON_SVG : PAUSE_ICON_SVG;
-    play.setAttribute('aria-label', isPaused ? 'Putar lagu terpilih' : 'Jeda lagu terpilih');
+    play.setAttribute('aria-label', isPaused ? t('music.play') : t('music.pause'));
   };
   const syncMiniPlayerButton = (): void => {
     const miniPlay = panel.querySelector<HTMLButtonElement>('.upload-mini-player__play-btn');
@@ -1635,7 +2005,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const isPaused = audio.paused || audio.src !== project.music.audioUrl;
     miniPlay.innerHTML = isPaused ? PLAY_ICON_SVG : PAUSE_ICON_SVG;
     miniPlay.classList.toggle('is-playing', !isPaused);
-    miniPlay.setAttribute('aria-label', isPaused ? 'Dengarkan preview lagu' : 'Jeda preview lagu');
+    miniPlay.setAttribute('aria-label', isPaused ? t('music.catalogListen') : t('music.catalogPause'));
   };
   audio.addEventListener('play', () => {
     syncSelectedAudioButton();
@@ -1651,15 +2021,38 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   });
   audio.addEventListener('error', () => {
     const message = panel.querySelector<HTMLElement>('.studio-player__status');
-    if (message) message.textContent = 'Lagu tidak dapat diputar. Pilih lagu lain atau upload MP3.';
+    if (message) message.textContent = t('error.songPlayback');
     syncSelectedAudioButton();
     syncMiniPlayerButton();
   });
+  const onboarding = createStudioOnboarding({
+    projectId,
+    getLocale: () => project.locale,
+    initialGuideLocale: browserLocale,
+    onSelectLanguage: async (locale, firstRun) => {
+      if (firstRun) applyInitialLocalePreset(project, locale);
+      else project.locale = locale;
+      project.updatedAt = new Date().toISOString();
+      document.documentElement.lang = locale;
+      await save(false);
+      nav.setAttribute('aria-label', t('header.stepsAria'));
+      guideButton.querySelector('span')!.textContent = t('header.guide');
+      brand.querySelector('.eyebrow')!.textContent = t('header.eyebrow');
+      brand.querySelector('strong')!.textContent = project.identity.recipient || t('header.newProject');
+      render();
+    },
+  });
+  guideButton.addEventListener('click', () => onboarding.open(guideButton, false));
+
   setStatus(status);
   render();
+  if (!onboarding.hasCompleted()) {
+    window.requestAnimationFrame(() => onboarding.open(null, true));
+  }
 
   return () => {
     window.clearTimeout(saveTimer);
+    onboarding.destroy();
     livePreview.destroy();
     musicCatalog?.destroy();
     studioTitleObserver?.disconnect();

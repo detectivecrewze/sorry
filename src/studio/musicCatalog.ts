@@ -1,5 +1,6 @@
 import { button, el } from '../ui/dom';
 import { loadPlaylist, resetPlaylistCache, type PlaylistTrack } from './playlist';
+import type { StudioTranslator } from './localization';
 
 interface MusicCatalogOptions {
   selectedAudioUrl?: () => string;
@@ -7,6 +8,7 @@ interface MusicCatalogOptions {
   beforePlay: () => void;
   onSelect: (track: PlaylistTrack) => void;
   onDeselect?: (audioUrl: string) => void;
+  t: StudioTranslator;
 }
 
 export interface MusicCatalogController {
@@ -22,26 +24,26 @@ export function createMusicCatalog(options: MusicCatalogOptions): MusicCatalogCo
   toggle.setAttribute('aria-expanded', 'false');
   const toggleCopy = el('span', 'music-catalog__toggle-copy');
   toggleCopy.append(
-    el('strong', '', 'Katalog lagu'),
-    el('small', '', 'Buka untuk mencari dan mendengarkan lagu'),
+    el('strong', '', options.t('music.catalogTitle')),
+    el('small', '', options.t('music.catalogCopy')),
   );
   const toggleIcon = el('span', 'music-catalog__toggle-icon', '⌄');
   toggleIcon.setAttribute('aria-hidden', 'true');
   toggle.append(toggleCopy, toggleIcon);
   const content = el('div', 'music-catalog__content');
   content.hidden = true;
-  const status = el('p', 'music-catalog__status', 'Memuat katalog lagu…');
+  const status = el('p', 'music-catalog__status', options.t('music.catalogLoading'));
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
   const searchLabel = el('label', 'form-field music-catalog__search');
   const search = el('input', 'text-input');
   search.type = 'search';
-  search.placeholder = 'Cari judul atau artis…';
+  search.placeholder = options.t('music.catalogSearchPlaceholder');
   search.autocomplete = 'off';
-  searchLabel.append(el('span', 'form-field__label', 'Cari katalog'), search);
+  searchLabel.append(el('span', 'form-field__label', options.t('music.catalogSearch')), search);
   const list = el('div', 'music-catalog__list');
   list.setAttribute('role', 'listbox');
-  list.setAttribute('aria-label', 'Katalog lagu');
+  list.setAttribute('aria-label', options.t('music.catalogAria'));
   content.append(searchLabel, status, list);
   root.append(toggle, content);
 
@@ -79,7 +81,7 @@ export function createMusicCatalog(options: MusicCatalogOptions): MusicCatalogCo
   const stop = (): void => {
     audio.pause();
     activeAudioUrl = '';
-    setStatus(tracks.length ? `${tracks.length} lagu tersedia. Dengarkan dulu sebelum memilih.` : '');
+    setStatus(tracks.length ? options.t('music.catalogAvailable', { count: tracks.length }) : '');
     render();
   };
 
@@ -100,14 +102,14 @@ export function createMusicCatalog(options: MusicCatalogOptions): MusicCatalogCo
       audio.load();
     }
     activeAudioUrl = track.audioUrl;
-    setStatus(`Memuat preview “${track.title}”…`, 'loading');
+    setStatus(options.t('music.catalogLoadingPreview', { title: track.title }), 'loading');
     render();
     try {
       await audio.play();
-      setStatus(`Sedang memutar “${track.title}”.`, 'playing');
+      setStatus(options.t('music.catalogPlaying', { title: track.title }), 'playing');
     } catch {
       activeAudioUrl = '';
-      setStatus('Preview lagu ini tidak dapat diputar di browser kamu. Pilih lagu lain atau upload MP3 sendiri.', 'error');
+      setStatus(options.t('music.catalogPreviewError'), 'error');
     }
     render();
   };
@@ -115,8 +117,8 @@ export function createMusicCatalog(options: MusicCatalogOptions): MusicCatalogCo
   const render = (): void => {
     if (destroyed) return;
     list.replaceChildren();
-    const query = search.value.trim().toLocaleLowerCase('id-ID');
-    const matches = tracks.filter((track) => `${track.title} ${track.artist}`.toLocaleLowerCase('id-ID').includes(query));
+    const query = search.value.trim().toLocaleLowerCase();
+    const matches = tracks.filter((track) => `${track.title} ${track.artist}`.toLocaleLowerCase().includes(query));
     const selectedUrls = getSelectedUrls();
     const isFull = selectedUrls.length >= 3;
 
@@ -143,24 +145,24 @@ export function createMusicCatalog(options: MusicCatalogOptions): MusicCatalogCo
       copy.append(titleWrap, el('small', '', track.artist));
 
       const actions = el('div', 'catalog-track__actions');
-      const preview = button(playing ? 'Jeda' : 'Dengarkan', `catalog-track__preview${playing ? ' is-active' : ''}`);
-      preview.setAttribute('aria-label', `${playing ? 'Jeda' : 'Dengarkan'} ${track.title} oleh ${track.artist}`);
+      const preview = button(playing ? options.t('music.catalogPause') : options.t('music.catalogListen'), `catalog-track__preview${playing ? ' is-active' : ''}`);
+      preview.setAttribute('aria-label', options.t('music.catalogListenAria', { action: playing ? options.t('music.catalogPause') : options.t('music.catalogListen'), title: track.title, artist: track.artist }));
       preview.addEventListener('click', () => void togglePreview(track));
 
       let select: HTMLButtonElement;
       if (selected) {
-        select = button('Hapus', 'catalog-track__select catalog-track__select--remove is-selected');
-        select.setAttribute('aria-label', `Hapus ${track.title} dari playlist`);
+        select = button(options.t('music.catalogRemove'), 'catalog-track__select catalog-track__select--remove is-selected');
+        select.setAttribute('aria-label', options.t('music.catalogRemoveAria', { title: track.title }));
         select.addEventListener('click', () => {
           stop();
           options.onDeselect?.(track.audioUrl);
         });
       } else {
-        select = button('Pilih lagu', `catalog-track__select${isFull ? ' is-disabled' : ''}`);
-        select.setAttribute('aria-label', `Pilih lagu ${track.title}`);
+        select = button(options.t('music.catalogSelect'), `catalog-track__select${isFull ? ' is-disabled' : ''}`);
+        select.setAttribute('aria-label', options.t('music.catalogSelectAria', { title: track.title }));
         if (isFull) {
           select.disabled = true;
-          select.title = 'Maksimal 3 lagu sudah dipilih. Hapus salah satu lagu untuk mengganti.';
+          select.title = options.t('music.catalogFull');
         } else {
           select.addEventListener('click', () => {
             stop();
@@ -173,7 +175,7 @@ export function createMusicCatalog(options: MusicCatalogOptions): MusicCatalogCo
       card.append(cover, copy, actions);
       list.append(card);
     }
-    if (!matches.length && tracks.length) list.append(el('p', 'music-catalog__empty', 'Lagu tidak ditemukan. Coba judul atau nama artis lain.'));
+    if (!matches.length && tracks.length) list.append(el('p', 'music-catalog__empty', options.t('music.catalogEmpty')));
   };
 
   search.addEventListener('input', render);
@@ -182,26 +184,26 @@ export function createMusicCatalog(options: MusicCatalogOptions): MusicCatalogCo
   audio.addEventListener('ended', stop);
   audio.addEventListener('error', () => {
     activeAudioUrl = '';
-    setStatus('Preview lagu ini tidak dapat diputar di browser kamu. Pilih lagu lain atau upload MP3 sendiri.', 'error');
+    setStatus(options.t('music.catalogPreviewError'), 'error');
     render();
   });
 
   const load = (): void => {
-    setStatus('Memuat katalog lagu…', 'loading');
+    setStatus(options.t('music.catalogLoading'), 'loading');
     list.replaceChildren();
     void loadPlaylist().then((loaded) => {
       if (destroyed) return;
       tracks = loaded;
-      setStatus(`${tracks.length} lagu tersedia. Dengarkan dulu sebelum memilih.`, 'ready');
+      setStatus(options.t('music.catalogAvailable', { count: tracks.length }), 'ready');
       const summary = toggleCopy.querySelector('small');
-      if (summary) summary.textContent = `${tracks.length} lagu tersedia • buka untuk memilih`;
+      if (summary) summary.textContent = options.t('music.catalogSummary', { count: tracks.length });
       render();
-    }).catch((error) => {
+    }).catch(() => {
       if (destroyed) return;
-      setStatus(error instanceof Error ? error.message : 'Katalog musik gagal dimuat.', 'error');
+      setStatus(options.t('music.catalogFailed'), 'error');
       const summary = toggleCopy.querySelector('small');
-      if (summary) summary.textContent = 'Katalog gagal dimuat • buka untuk mencoba lagi';
-      const retry = button('Coba muat lagi', 'ui-button ui-button--secondary music-catalog__retry');
+      if (summary) summary.textContent = options.t('music.catalogFailedSummary');
+      const retry = button(options.t('music.catalogRetry'), 'ui-button ui-button--secondary music-catalog__retry');
       retry.addEventListener('click', () => {
         resetPlaylistCache();
         load();

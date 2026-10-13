@@ -3,6 +3,7 @@ import type { SorryGiftProjectV1 } from '../project/schema';
 import { mountGift } from '../renderer/mountGift';
 import type { SceneId } from '../state/machine';
 import { button, el, trapFocus } from '../ui/dom';
+import type { StudioTranslator } from './localization';
 
 export interface PreviewSceneTab {
   label: string;
@@ -19,6 +20,7 @@ export interface StudioPreviewRequest {
 interface LivePreviewOptions {
   getProject: () => SorryGiftProjectV1;
   beforeOpen: () => void;
+  t: StudioTranslator;
 }
 
 export interface StudioLivePreviewController {
@@ -61,7 +63,7 @@ export function createStudioLivePreview(options: LivePreviewOptions): StudioLive
     const card = el('section', 'studio-live-preview__card');
     const header = el('header', 'studio-live-preview__header');
     const heading = el('div', 'studio-live-preview__heading');
-    heading.append(el('span', 'eyebrow', 'Live Preview'));
+    heading.append(el('span', 'eyebrow', options.t('preview.kicker')));
     const title = el('h2', '', request.title);
     title.id = 'studio-live-preview-title';
     heading.append(title, el('p', '', request.description));
@@ -70,24 +72,24 @@ export function createStudioLivePreview(options: LivePreviewOptions): StudioLive
     const modeToggle = button('', 'studio-live-preview__mode-toggle');
     const updateModeToggleUI = (): void => {
       modeToggle.innerHTML = isInstantText
-        ? `${BOLT_ICON_SVG}<span>Teks Instan</span>`
-        : `${MOTION_ICON_SVG}<span>Animasi Ketik</span>`;
+        ? `${BOLT_ICON_SVG}<span>${options.t('preview.instant')}</span>`
+        : `${MOTION_ICON_SVG}<span>${options.t('preview.animated')}</span>`;
       modeToggle.classList.toggle('is-animated', !isInstantText);
     };
     updateModeToggleUI();
-    modeToggle.setAttribute('title', 'Alihkan antara teks instan cepat atau simulasi animasi ketik');
-    modeToggle.setAttribute('aria-label', 'Alihkan mode tampilan teks preview');
+    modeToggle.setAttribute('title', options.t('preview.modeTitle'));
+    modeToggle.setAttribute('aria-label', options.t('preview.modeAria'));
 
     const closeButton = button('', 'studio-live-preview__close');
     closeButton.innerHTML = CLOSE_ICON_SVG;
-    closeButton.setAttribute('aria-label', 'Tutup live preview');
+    closeButton.setAttribute('aria-label', options.t('preview.closeAria'));
     closeButton.addEventListener('click', close);
     headerActions.append(modeToggle, closeButton);
     header.append(heading, headerActions);
 
     const tabs = el('div', 'studio-live-preview__tabs');
     tabs.setAttribute('role', 'tablist');
-    tabs.setAttribute('aria-label', 'Bagian preview');
+    tabs.setAttribute('aria-label', options.t('preview.tabsAria'));
     const stage = el('div', 'studio-live-preview__stage');
     const device = el('div', 'studio-live-preview__device');
     stage.append(device);
