@@ -294,10 +294,16 @@ function openTwoStepDeleteModal(config: TwoStepDeleteConfig): void {
   document.body.classList.add('has-modal');
 }
 
+interface PresetChangePreview {
+  label: string;
+  before: string;
+  after: string;
+}
+
 interface PresetConfirmConfig {
   t: ReturnType<typeof createStudioTranslator>;
   name: string;
-  scopes: string[];
+  changes: PresetChangePreview[];
   onConfirm: () => void;
 }
 
@@ -309,24 +315,39 @@ function openPresetConfirmModal(config: PresetConfirmConfig): void {
   backdrop.setAttribute('aria-label', config.t('preset.modalAria', { name: config.name }));
 
   const card = el('div', 'preset-confirm-modal__card');
+  card.tabIndex = -1;
   const icon = el('div', 'preset-confirm-modal__icon');
   icon.innerHTML = PRESET_DOCUMENT_SVG;
   const kicker = el('p', 'preset-confirm-modal__kicker', config.t('preset.modalKicker'));
   const title = el('h3', 'preset-confirm-modal__title', config.t('preset.modalTitle', { name: config.name }));
   const description = el('p', 'preset-confirm-modal__copy', config.t('preset.modalCopy'));
-  const scopeList = el('div', 'preset-confirm-modal__scopes');
-  config.scopes.forEach((scope) => {
-    const item = el('span', 'preset-confirm-modal__scope');
-    item.innerHTML = CHECK_ICON_SVG;
-    item.append(document.createTextNode(scope));
-    scopeList.append(item);
+  const comparison = el('div', 'preset-confirm-modal__comparison');
+  config.changes.forEach((change) => {
+    const row = el('section', 'preset-confirm-modal__change');
+    row.append(el('h4', 'preset-confirm-modal__field-name', change.label));
+    const values = el('div', 'preset-confirm-modal__values');
+    const before = el('div', 'preset-confirm-modal__value preset-confirm-modal__value--before');
+    before.append(
+      el('span', 'preset-confirm-modal__value-label', config.t('preset.currentValue')),
+      el('p', '', change.before.trim() || config.t('preset.emptyValue')),
+    );
+    const arrow = el('span', 'preset-confirm-modal__arrow');
+    arrow.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>';
+    const after = el('div', 'preset-confirm-modal__value preset-confirm-modal__value--after');
+    after.append(
+      el('span', 'preset-confirm-modal__value-label', config.t('preset.afterValue')),
+      el('p', '', change.after.trim() || config.t('preset.emptyValue')),
+    );
+    values.append(before, arrow, after);
+    row.append(values);
+    comparison.append(row);
   });
   const note = el('p', 'preset-confirm-modal__note', config.t('preset.modalNote'));
   const actions = el('div', 'preset-confirm-modal__actions');
   const cancelButton = button(config.t('common.cancel'), 'ui-button ui-button--secondary');
   const confirmButton = button(config.t('preset.modalConfirm'), 'ui-button ui-button--primary');
   actions.append(cancelButton, confirmButton);
-  card.append(icon, kicker, title, description, scopeList, note, actions);
+  card.append(icon, kicker, title, description, comparison, note, actions);
   backdrop.append(card);
 
   const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -367,7 +388,7 @@ function openPresetConfirmModal(config: PresetConfirmConfig): void {
   window.addEventListener('keydown', onKeyDown);
   document.body.append(backdrop);
   document.body.classList.add('has-modal');
-  window.requestAnimationFrame(() => confirmButton.focus());
+  window.requestAnimationFrame(() => card.focus({ preventScroll: true }));
 }
 function renderScannableLoveBarcode(
   canvas: HTMLCanvasElement,
@@ -585,6 +606,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     kind: 'subtitle' | 'letter',
     presets: StudioPreset<TValue>[],
     isActive: (preset: StudioPreset<TValue>) => boolean,
+    getChanges: (preset: StudioPreset<TValue>) => PresetChangePreview[],
     onApply: (preset: StudioPreset<TValue>) => void,
   ): HTMLElement {
     const root = el('div', 'copy-preset-rail');
@@ -608,13 +630,10 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       choice.dataset.preset = preset.id;
       choice.setAttribute('aria-label', t('preset.applyAria', { name }));
       choice.addEventListener('click', () => {
-        const scopes = kind === 'letter'
-          ? [t('preset.scopeHeading'), t('preset.scopeBody'), t('preset.scopeSignoff')]
-          : [t('preset.scopeSubtitle')];
         openPresetConfirmModal({
           t,
           name,
-          scopes,
+          changes: getChanges(preset),
           onConfirm: () => {
             onApply(preset);
             refresh();
@@ -631,18 +650,14 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
   function createLocaleFillRail(
     section: 'question' | 'accepted' | 'needTime' | 'promise',
     isActive: (locale: ProjectLocale) => boolean,
+    getChanges: (locale: ProjectLocale) => PresetChangePreview[],
     onApply: (locale: ProjectLocale) => void,
   ): HTMLElement {
     const root = el('div', 'locale-fill-rail');
     const copy = el('div', 'locale-fill-rail__copy');
     copy.append(el('strong', '', t('preset.label')), el('small', '', t('preset.languageHint')));
     const actions = el('div', 'locale-fill-rail__actions');
-    const sectionScope = {
-      question: t('preset.scopeQuestion'),
-      accepted: t('preset.scopeAccepted'),
-      needTime: t('preset.scopeNeedTime'),
-      promise: t('preset.scopePromise'),
-    }[section];
+
     const refresh = (): void => {
       actions.querySelectorAll<HTMLButtonElement>('button').forEach((node) => {
         const locale: ProjectLocale = node.dataset.locale === 'en' ? 'en' : 'id';
@@ -661,7 +676,7 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
         openPresetConfirmModal({
           t,
           name,
-          scopes: [sectionScope],
+          changes: getChanges(locale),
           onConfirm: () => {
             onApply(locale);
             refresh();
@@ -765,6 +780,11 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       'subtitle',
       OPENING_SUBTITLE_PRESETS,
       (preset) => project.intro.subtitle === preset.value[project.locale],
+      (preset) => [{
+        label: t('identity.introSubtitle'),
+        before: project.intro.subtitle,
+        after: preset.value[project.locale],
+      }],
       (preset) => {
         const value = preset.value[project.locale];
         subtitle.value = value;
@@ -905,6 +925,14 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       },
       (preset) => {
         const value = preset.value[project.locale];
+        return [
+          { label: t('letter.headingLabel'), before: project.letter.heading, after: value.heading },
+          { label: t('letter.bodyLabel'), before: formatLetterText(project.letter.paragraphs), after: value.body },
+          { label: t('letter.signoffLabel'), before: project.letter.signoff, after: value.signoff },
+        ];
+      },
+      (preset) => {
+        const value = preset.value[project.locale];
         heading.value = value.heading;
         paragraphs.value = value.body;
         signoff.value = value.signoff;
@@ -918,6 +946,11 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
     const questionLanguage = createLocaleFillRail(
       'question',
       (locale) => project.question.heading === PROJECT_CONTENT_PRESETS[locale].question.heading,
+      (locale) => [{
+        label: t('question.label'),
+        before: project.question.heading,
+        after: PROJECT_CONTENT_PRESETS[locale].question.heading,
+      }],
       (locale) => {
         const value = PROJECT_CONTENT_PRESETS[locale].question.heading;
         question.value = value;
@@ -931,6 +964,13 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       (locale) => {
         const preset = PROJECT_CONTENT_PRESETS[locale].endings.accepted;
         return project.endings.accepted.heading === preset.heading && project.endings.accepted.body === preset.body;
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.accepted;
+        return [
+          { label: t('accepted.headingLabel'), before: project.endings.accepted.heading, after: preset.heading },
+          { label: t('accepted.bodyLabel'), before: project.endings.accepted.body, after: preset.body },
+        ];
       },
       (locale) => {
         const preset = PROJECT_CONTENT_PRESETS[locale].endings.accepted;
@@ -951,6 +991,14 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       },
       (locale) => {
         const preset = PROJECT_CONTENT_PRESETS[locale].endings.needTime;
+        return [
+          { label: t('wait.headingLabel'), before: project.endings.needTime.heading, after: preset.heading },
+          { label: t('wait.bodyLabel'), before: project.endings.needTime.body, after: preset.body },
+          { label: t('wait.loveLineLabel'), before: project.endings.needTime.loveLine, after: preset.loveLine },
+        ];
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.needTime;
         waitHeading.value = preset.heading;
         waitBody.value = preset.body;
         loveLine.value = preset.loveLine;
@@ -964,6 +1012,13 @@ export async function mountStudio(target: HTMLElement, projectId: string): Promi
       (locale) => {
         const preset = PROJECT_CONTENT_PRESETS[locale].endings.promise;
         return project.endings.promise.heading === preset.heading && project.endings.promise.body === preset.body;
+      },
+      (locale) => {
+        const preset = PROJECT_CONTENT_PRESETS[locale].endings.promise;
+        return [
+          { label: t('promise.headingLabel'), before: project.endings.promise.heading, after: preset.heading },
+          { label: t('promise.bodyLabel'), before: project.endings.promise.body, after: preset.body },
+        ];
       },
       (locale) => {
         const preset = PROJECT_CONTENT_PRESETS[locale].endings.promise;

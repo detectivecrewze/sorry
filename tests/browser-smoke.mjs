@@ -256,6 +256,8 @@ try {
   const gentleOpeningPreset = studioPage.locator('.copy-preset-chip[data-preset="gentle"]');
   await gentleOpeningPreset.click();
   assert((await studioPage.getByLabel('Subtitle pembuka').inputValue()) === openingSubtitleBeforePreset, 'Opening a preset confirmation must preserve the current copy.');
+  assert((await studioPage.locator('.preset-confirm-modal__value--before').innerText()).includes(openingSubtitleBeforePreset), 'Preset modal must show the current field value.');
+  assert((await studioPage.locator('.preset-confirm-modal__value--after').innerText()).includes('Tidak semua kata'), 'Preset modal must show the replacement value.');
   const presetModalBox = await studioPage.locator('.preset-confirm-modal__card').boundingBox();
   assert(Boolean(presetModalBox && Math.abs((presetModalBox.y + presetModalBox.height / 2) - 422) < 30), 'Preset confirmation must be centered in the mobile viewport.');
   await studioPage.screenshot({ path: join(qaDirectory, 'studio-mobile-preset-confirm.png') });
@@ -288,7 +290,9 @@ try {
   const letterBodyBeforePreset = await studioPage.getByLabel('Isi surat').inputValue();
   await simpleLetterPreset.click();
   assert((await studioPage.getByLabel('Isi surat').inputValue()) === letterBodyBeforePreset, 'Opening the letter preset modal must preserve all current copy.');
-  assert(await studioPage.locator('.preset-confirm-modal__scope').count() === 3, 'Letter preset confirmation must list title, body, and signoff.');
+  assert(await studioPage.locator('.preset-confirm-modal__change').count() === 3, 'Letter preset confirmation must compare title, body, and signoff.');
+  assert((await studioPage.locator('.preset-confirm-modal__change').first().innerText()).includes('Maafkan Aku...'), 'Letter preset comparison must show the replacement title.');
+  await studioPage.screenshot({ path: join(qaDirectory, 'studio-mobile-letter-preset-confirm.png') });
   await studioPage.getByRole('button', { name: 'Terapkan Preset', exact: true }).click();
   assert((await studioPage.getByLabel('Judul surat').inputValue()) === 'Maafkan Aku...', 'A letter preset must update the letter title.');
   assert((await studioPage.getByLabel('Isi surat').inputValue()).includes('Aku minta maaf'), 'A letter preset must update the letter body.');
